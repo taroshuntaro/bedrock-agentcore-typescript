@@ -2,6 +2,7 @@ import 'dotenv/config'
 import { App } from '@slack/bolt'
 import { invokeAgent, type AgentFile } from '@app/contract'
 import { buildAgentRequest } from './mapping'
+import { toSlackMrkdwn } from './format'
 
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
@@ -37,7 +38,8 @@ app.event('app_mention', async ({ event, client, say }) => {
       files,
     })
     const res = await invokeAgent(req, { agentRuntimeArn, region })
-    await say({ text: res.text || '(空の応答)', thread_ts: threadTs })
+    // Agent は通常の Markdown を返すため、Slack mrkdwn に変換してから投稿する。
+    await say({ text: toSlackMrkdwn(res.text ?? '') || '(空の応答)', thread_ts: threadTs })
 
     for (const a of res.artifacts ?? []) {
       await client.files.uploadV2({

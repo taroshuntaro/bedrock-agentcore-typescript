@@ -1,18 +1,24 @@
+import * as path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { Stack, type StackProps, CfnOutput } from 'aws-cdk-lib'
 import type { Construct } from 'constructs'
-import * as ecr from 'aws-cdk-lib/aws-ecr'
 import * as iam from 'aws-cdk-lib/aws-iam'
+import { Platform } from 'aws-cdk-lib/aws-ecr-assets'
 import * as agentcore from 'aws-cdk-lib/aws-bedrockagentcore'
+
+// このファイル（infra/lib）から見たリポジトリルート。Dockerfile が置かれている。
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 
 export class AgentStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props)
 
-    const repository = new ecr.Repository(this, 'AgentRepo', {
-      repositoryName: 'agentcore-agent',
+    // CDK がリポジトリルートの Dockerfile をビルドし、ブートストラップ管理の ECR に
+    // push してから Runtime を作成する。これにより「イメージ未存在」での作成失敗を防ぐ。
+    // AgentCore Runtime は linux/arm64 イメージを要求するため platform を明示する。
+    const artifact = agentcore.AgentRuntimeArtifact.fromAsset(repoRoot, {
+      platform: Platform.LINUX_ARM64,
     })
-
-    const artifact = agentcore.AgentRuntimeArtifact.fromEcrRepository(repository, 'latest')
 
     const runtime = new agentcore.Runtime(this, 'AgentRuntime', {
       runtimeName: 'slackAgent',
@@ -36,6 +42,5 @@ export class AgentStack extends Stack {
     }))
 
     new CfnOutput(this, 'AgentRuntimeArn', { value: runtime.agentRuntimeArn })
-    new CfnOutput(this, 'EcrRepoUri', { value: repository.repositoryUri })
   }
 }

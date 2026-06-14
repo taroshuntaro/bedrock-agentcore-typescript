@@ -26,7 +26,7 @@ pnpm モノレポ構成の PoC プロジェクト。Slack（ローカル Socket 
 ## 前提条件
 
 - Node.js 20 以上（corepack 経由で pnpm 9 を利用）
-- Docker
+- Docker（CDK が `linux/arm64` イメージをビルドします。amd64 ホスト（WSL2 等）では arm64 エミュレーションが必要 → 下記「デプロイ」参照）
 - AWS 認証情報設定済み（`aws configure` または環境変数）
 - Bedrock の利用したいモデルのアクセス有効化（`ap-northeast-1` で有効化。既定は `global.anthropic.claude-sonnet-4-6`）
 - Slack アプリの準備:
@@ -50,6 +50,8 @@ pnpm test
 
 ## デプロイ（エージェント）
 
+CDK がリポジトリルートの `Dockerfile` をビルドし、ブートストラップ管理の ECR に push してから Runtime を作成します。手動の `docker build` / `docker push` は不要です（イメージ未 push による Runtime 作成失敗を防ぐため、この方式にしています）。
+
 ### 1. CDK ブートストラップ（初回のみ）
 
 スタックは `ap-northeast-1` にデプロイされます。CLI の既定リージョンが異なる場合は明示的に指定してください。
@@ -58,41 +60,23 @@ pnpm test
 pnpm --filter @app/infra exec cdk bootstrap aws://<AWS_ACCOUNT_ID>/ap-northeast-1
 ```
 
-### 2. CDK スタックをデプロイ（ECR リポジトリ＋Runtime 作成）
+### 2. arm64 エミュレーションの有効化（amd64 ホストのみ・初回のみ）
+
+AgentCore Runtime は `linux/arm64` イメージを要求します。Apple Silicon 等の arm64 ホストでは不要ですが、**amd64 ホスト（WSL2 等）では QEMU エミュレーションの登録**が必要です。
+
+```bash
+docker run --privileged --rm tonistiigi/binfmt --install arm64
+# 確認: 'aarch64' が出れば OK
+docker run --rm --platform linux/arm64 arm64v8/alpine uname -m
+```
+
+### 3. デプロイ（ビルド〜push〜Runtime 作成まで一括）
 
 ```bash
 pnpm --filter @app/infra deploy
 ```
 
-デプロイ完了後、出力に表示される `EcrRepoUri` を控えておきます。
-
-### 3. Docker イメージをビルド
-
-```bash
-docker build -t agentcore-agent .
-```
-
-### 4. ECR にログイン・タグ付け・プッシュ
-
-```bash
-# ECR にログイン（アカウント ID を適宜変更。リージョンは ap-northeast-1 前提）
-aws ecr get-login-password --region ap-northeast-1 \
-  | docker login --username AWS --password-stdin <AWS_ACCOUNT_ID>.dkr.ecr.ap-northeast-1.amazonaws.com
-
-# タグ付け
-docker tag agentcore-agent:latest <EcrRepoUri>:latest
-
-# プッシュ
-docker push <EcrRepoUri>:latest
-```
-
-### 5. 再デプロイ（Runtime に最新イメージを反映）
-
-```bash
-pnpm --filter @app/infra deploy
-```
-
-完了後、出力の `AgentRuntimeArn` を控えておきます。
+完了後、出力の `AgentRuntimeArn` を控えておきます（`.env` の `AGENT_RUNTIME_ARN` に設定）。コードを変更したら、再度このコマンドを実行するだけで新しいイメージがビルド・反映されます。
 
 ## ローカル起動（Slack コンシューマー）
 

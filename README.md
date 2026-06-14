@@ -29,11 +29,7 @@ pnpm モノレポ構成の PoC プロジェクト。Slack（ローカル Socket 
 - Docker（CDK が `linux/arm64` イメージをビルドします。amd64 ホスト（WSL2 等）では arm64 エミュレーションが必要 → 下記「デプロイ」参照）
 - AWS 認証情報設定済み（`aws configure` または環境変数）
 - Bedrock の利用したいモデルのアクセス有効化（`ap-northeast-1` で有効化。既定は `global.anthropic.claude-sonnet-4-6`）
-- Slack アプリの準備:
-  - Socket Mode 有効化
-  - `SLACK_BOT_TOKEN`（`xoxb-...`）と `SLACK_APP_TOKEN`（`xapp-...`）取得済み
-  - `app_mention` イベント購読
-  - `files:read` / `chat:write` / `files:write` 等のスコープ付与
+- Slack アプリの準備（Socket Mode・トークン取得・スコープ付与など）→ 詳細は [docs/slack-setup.md](docs/slack-setup.md) を参照
 
 ## セットアップ
 
@@ -79,6 +75,8 @@ pnpm --filter @app/infra deploy
 完了後、出力の `AgentRuntimeArn` を控えておきます（`.env` の `AGENT_RUNTIME_ARN` に設定）。コードを変更したら、再度このコマンドを実行するだけで新しいイメージがビルド・反映されます。
 
 ## ローカル起動（Slack コンシューマー）
+
+Slack アプリの作成・トークン取得・スコープ設定は [docs/slack-setup.md](docs/slack-setup.md) を参照してください。以下はトークン取得済みを前提とした起動手順です。
 
 ### 1. 環境変数を設定
 

@@ -52,3 +52,31 @@ describe('collectOutputArtifacts', () => {
     expect(await collectOutputArtifacts(client as any)).toEqual([])
   })
 })
+
+describe('error-string handling', () => {
+  it('uploadInputFiles throws when writeFiles returns an Error string', async () => {
+    const client = makeClient()
+    client.writeFiles.mockResolvedValue('Error: Write failed')
+    await expect(
+      uploadInputFiles(client as any, [{ name: 'a.csv', mimeType: 'text/csv', data: Buffer.from('1,2').toString('base64') }]),
+    ).rejects.toThrow(/writeFiles failed/)
+  })
+
+  it('collectOutputArtifacts returns empty when listing errors', async () => {
+    const client = makeClient()
+    client.executeCommand.mockResolvedValue('Error: Command execution failed')
+    expect(await collectOutputArtifacts(client as any)).toEqual([])
+  })
+
+  it('collectOutputArtifacts skips files whose read errors', async () => {
+    const client = makeClient()
+    client.executeCommand.mockResolvedValue('good.csv\nbad.csv\n')
+    client.readFiles
+      .mockResolvedValueOnce('a,b')
+      .mockResolvedValueOnce('Error: Read failed')
+    const artifacts = await collectOutputArtifacts(client as any)
+    expect(artifacts).toEqual([
+      { name: 'good.csv', mimeType: 'text/csv', data: Buffer.from('a,b').toString('base64') },
+    ])
+  })
+})

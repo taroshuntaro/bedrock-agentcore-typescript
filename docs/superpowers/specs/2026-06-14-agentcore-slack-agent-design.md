@@ -49,6 +49,7 @@ Slack(thread, file)
       └─ packages/contract のクライアントで InvokeAgentRuntime
           → apps/agent (AgentCore Runtime / コンテナ)
                BedrockAgentCoreApp(:8080) でラップした Vercel AI SDK エージェント
+                 ├─ uploadInputFiles → buildPrompt（ファイル名一覧をプロンプトに付与）
                  └─ tool: Code Interpreter（組み込み統合）でファイル処理・コード実行
           ← テキスト応答（＋生成物 artifacts）
   ← スレッドへ返信
@@ -69,10 +70,10 @@ Slack(thread, file)
 ### 5.2 apps/agent（AgentCore Runtime エージェント）
 - Vercel AI SDK でエージェントループを構成。Bedrock プロバイダ経由でモデルを利用。
 - Code Interpreter を AI SDK の**ツールとして登録**する。呼び出しは必須ではなく、**モデルがユーザー指示に応じて自律的に使うかどうかを判断**する（tool-calling）。単純な会話なら未使用、ファイル処理やコード実行が必要なときに呼ばれる。
-- 入力 `AgentRequest` を受ける。`files` がある場合、モデルが Code Interpreter を選択したらサンドボックスへ書き込み → コード生成・実行して処理。
+- 入力 `AgentRequest` を受ける。`files` がある場合、サンドボックスの `input/` に書き込んだ上で、プロンプト末尾にファイル名一覧を付与して LLM にファイルの存在を認識させる（`buildPrompt`）。モデルが Code Interpreter を選択したらサンドボックス上のファイルを処理する。
 - 今後追加するツール（WebSearch 等）も同様に「登録するがモデルが判断して呼ぶ」方針で統一する。
 - **ファイル入出力（Code Interpreter）**:
-  - 入力: `AgentRequest.files` をサンドボックスへ書き込み、モデルが処理に利用。
+  - 入力: `AgentRequest.files` をサンドボックスの `input/` へ書き込み、プロンプトにファイル名一覧を付与して LLM に認識させる（`buildPrompt`）。モデルが処理に利用。
   - 出力: モデルがサンドボックス内で**生成したファイル**（グラフ画像・変換後ファイル・CSV等）を `output/` に保存する。エージェントは `ls` で列挙後、各ファイルを **`base64 -w0` コマンドで安全にエンコードして読み出し**、`AgentResponse.artifacts` に載せて返す。`readFiles` API は文字列しか返せずバイナリが壊れるため使用しない。コンシューマー側でダウンロード可能にする。
 - `BedrockAgentCoreApp` で HTTP(:8080) 化し、リクエスト解析・ストリーミング・セッション管理を委譲。
 - 出力: `AgentResponse`（テキスト ＋ 生成物 artifacts）。

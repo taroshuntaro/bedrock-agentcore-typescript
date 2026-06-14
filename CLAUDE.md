@@ -57,7 +57,7 @@ Slack (app_mention)
   → consumer-slack: downloadSlackFiles → buildAgentRequest (mapping.ts)
   → contract: invokeAgent → BedrockAgentCoreClient → InvokeAgentRuntime
   → agent (AgentCore Runtime 上):
-      uploadInputFiles → ToolLoopAgent.generate → collectOutputArtifacts
+      uploadInputFiles → buildPrompt(text + files) → ToolLoopAgent.generate → collectOutputArtifacts
   → consumer-slack: toSlackMrkdwn(text) + files.uploadV2(artifacts)
   → Slack スレッドに応答
 ```

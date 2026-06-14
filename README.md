@@ -4,6 +4,8 @@
 
 pnpm モノレポ構成の PoC プロジェクト。Slack（ローカル Socket Mode）から AWS Bedrock AgentCore 上の Vercel AI SDK エージェントを呼び出し、Code Interpreter でファイルの入出力処理ができる汎用エージェントです。コンシューマー（Slack アダプター）とエージェントは `packages/contract` を介して疎結合になっており、他のコンシューマーを追加しても既存のエージェントには依存しません。
 
+本プロジェクトは **`ap-northeast-1`（東京）リージョン**を前提に構築しています。コード・CDK・各種設定の既定リージョンはすべて `ap-northeast-1` です。別リージョンで動かす場合は、`AWS_REGION` 環境変数（および CDK デプロイ時のリージョン）を上書きしてください。なお Bedrock のモデルは東京リージョンから利用可能なグローバル推論プロファイル（`global.anthropic.claude-sonnet-4-6`）を既定としています。
+
 ## 構成
 
 ```
@@ -26,7 +28,7 @@ pnpm モノレポ構成の PoC プロジェクト。Slack（ローカル Socket 
 - Node.js 20 以上（corepack 経由で pnpm 9 を利用）
 - Docker
 - AWS 認証情報設定済み（`aws configure` または環境変数）
-- Bedrock の利用したいモデルのアクセス有効化
+- Bedrock の利用したいモデルのアクセス有効化（`ap-northeast-1` で有効化。既定は `global.anthropic.claude-sonnet-4-6`）
 - Slack アプリの準備:
   - Socket Mode 有効化
   - `SLACK_BOT_TOKEN`（`xoxb-...`）と `SLACK_APP_TOKEN`（`xapp-...`）取得済み
@@ -50,8 +52,10 @@ pnpm test
 
 ### 1. CDK ブートストラップ（初回のみ）
 
+スタックは `ap-northeast-1` にデプロイされます。CLI の既定リージョンが異なる場合は明示的に指定してください。
+
 ```bash
-pnpm --filter @app/infra exec cdk bootstrap
+pnpm --filter @app/infra exec cdk bootstrap aws://<AWS_ACCOUNT_ID>/ap-northeast-1
 ```
 
 ### 2. CDK スタックをデプロイ（ECR リポジトリ＋Runtime 作成）
@@ -71,9 +75,9 @@ docker build -t agentcore-agent .
 ### 4. ECR にログイン・タグ付け・プッシュ
 
 ```bash
-# ECR にログイン（リージョン・アカウント ID を適宜変更）
-aws ecr get-login-password --region <AWS_REGION> \
-  | docker login --username AWS --password-stdin <AWS_ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com
+# ECR にログイン（アカウント ID を適宜変更。リージョンは ap-northeast-1 前提）
+aws ecr get-login-password --region ap-northeast-1 \
+  | docker login --username AWS --password-stdin <AWS_ACCOUNT_ID>.dkr.ecr.ap-northeast-1.amazonaws.com
 
 # タグ付け
 docker tag agentcore-agent:latest <EcrRepoUri>:latest

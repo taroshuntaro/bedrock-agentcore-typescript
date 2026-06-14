@@ -20,8 +20,9 @@ export async function uploadInputFiles(client: CodeInterpreter, files: AgentFile
   if (isErrorResult(result)) throw new Error(`Code Interpreter writeFiles failed: ${result}`)
 }
 
-/** output/ を列挙し、各ファイルを artifact として読み戻す。
- *  `<name>.b64` は base64 バイナリ、それ以外はテキスト。読み取りに失敗したファイルはスキップ。 */
+/** output/ を列挙し、各ファイルを base64 artifact として読み戻す。
+ *  readFiles は文字列しか返せずバイナリが壊れるため、サンドボックス内で base64 エンコード
+ *  してから読み出す。これによりテキスト・バイナリを一律に扱える。失敗したファイルはスキップ。 */
 export async function collectOutputArtifacts(client: CodeInterpreter): Promise<AgentArtifact[]> {
   const listing = await client.executeCommand({ command: 'ls -1 output/ 2>/dev/null || true' })
   if (isErrorResult(listing)) return []
@@ -29,14 +30,9 @@ export async function collectOutputArtifacts(client: CodeInterpreter): Promise<A
 
   const artifacts: AgentArtifact[] = []
   for (const name of names) {
-    const content = await client.readFiles({ paths: [`output/${name}`] })
-    if (isErrorResult(content)) continue
-    if (name.endsWith('.b64')) {
-      const realName = name.slice(0, -'.b64'.length)
-      artifacts.push({ name: realName, mimeType: guessMime(realName), data: content.trim() })
-    } else {
-      artifacts.push({ name, mimeType: guessMime(name), data: Buffer.from(content, 'utf-8').toString('base64') })
-    }
+    const encoded = await client.executeCommand({ command: `base64 -w0 "output/${name}"` })
+    if (isErrorResult(encoded)) continue
+    artifacts.push({ name, mimeType: guessMime(name), data: encoded.trim() })
   }
   return artifacts
 }
@@ -47,5 +43,6 @@ function guessMime(name: string): string {
   if (name.endsWith('.csv')) return 'text/csv'
   if (name.endsWith('.json')) return 'application/json'
   if (name.endsWith('.txt')) return 'text/plain'
+  if (name.endsWith('.pdf')) return 'application/pdf'
   return 'application/octet-stream'
 }

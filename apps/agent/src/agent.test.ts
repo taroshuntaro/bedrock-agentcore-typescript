@@ -5,8 +5,9 @@ describe('runAgent', () => {
   it('uploads input files, runs the model, collects artifacts, and stops the session', async () => {
     const client = {
       writeFiles: vi.fn().mockResolvedValue('ok'),
-      readFiles: vi.fn().mockResolvedValue(Buffer.from('PNG').toString('base64')),
-      executeCommand: vi.fn().mockResolvedValue('chart.png.b64\n'),
+      executeCommand: vi.fn()
+        .mockResolvedValueOnce('chart.png\n') // ls output/
+        .mockResolvedValueOnce(Buffer.from('PNG').toString('base64')), // base64 output/chart.png
     }
     const ci = { getClient: () => client, stopSession: vi.fn().mockResolvedValue(undefined) }
     const generate = vi.fn().mockResolvedValue('done')
@@ -26,7 +27,6 @@ describe('runAgent', () => {
   it('stops the session even if generate throws', async () => {
     const client = {
       writeFiles: vi.fn().mockResolvedValue('ok'),
-      readFiles: vi.fn(),
       executeCommand: vi.fn().mockResolvedValue(''),
     }
     const ci = { getClient: () => client, stopSession: vi.fn().mockResolvedValue(undefined) }

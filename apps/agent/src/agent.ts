@@ -10,9 +10,8 @@ const MODEL_ID = process.env.AGENT_MODEL_ID ?? 'global.anthropic.claude-sonnet-4
 const INSTRUCTIONS = [
   'あなたは汎用アシスタントです。',
   'ファイル処理やコード実行が必要なときだけツール（Code Interpreter）を使ってください。不要なら使わないでください。',
-  '入力ファイルは input/ にあります。生成物は必ず output/ に保存してください。',
-  '画像など非テキストの生成物は、base64 にエンコードして output/<name>.b64 というテキストファイルとして保存してください（例: チャート画像なら output/chart.png.b64）。',
-  'CSV や JSON などテキストの生成物はそのまま output/<name> に保存してください。',
+  '入力ファイルは input/ にあります。生成物は必ず output/<name> にそのまま保存してください（画像・PDF などバイナリも変換せずそのまま保存。base64 化やコピーの複製は不要です）。',
+  '生成したファイルの内容や base64 文字列を最終応答に貼り付けないでください。応答ではファイルを作成した旨を簡潔に伝えてください。',
 ].join('\n')
 
 /** ファイル入出力に使う Code Interpreter クライアントの最小インターフェース。 */

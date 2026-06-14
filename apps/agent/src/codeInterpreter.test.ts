@@ -4,7 +4,6 @@ import { uploadInputFiles, collectOutputArtifacts } from './codeInterpreter'
 function makeClient() {
   return {
     writeFiles: vi.fn().mockResolvedValue('ok'),
-    readFiles: vi.fn(),
     executeCommand: vi.fn(),
   }
 }
@@ -33,17 +32,29 @@ describe('uploadInputFiles', () => {
 })
 
 describe('collectOutputArtifacts', () => {
-  it('reads text outputs (base64-encoded) and .b64 outputs (raw base64)', async () => {
+  it('base64-encodes each output file via executeCommand', async () => {
     const client = makeClient()
-    client.executeCommand.mockResolvedValue('report.csv\nchart.png.b64\n')
-    client.readFiles
-      .mockResolvedValueOnce('col1,col2')
-      .mockResolvedValueOnce(Buffer.from('PNG').toString('base64'))
+    client.executeCommand
+      .mockResolvedValueOnce('report.csv\nchart.png\n') // ls
+      .mockResolvedValueOnce(Buffer.from('col1,col2').toString('base64') + '\n') // base64 report.csv
+      .mockResolvedValueOnce(Buffer.from('PNG').toString('base64') + '\n') // base64 chart.png
     const artifacts = await collectOutputArtifacts(client as any)
     expect(artifacts).toEqual([
       { name: 'report.csv', mimeType: 'text/csv', data: Buffer.from('col1,col2').toString('base64') },
       { name: 'chart.png', mimeType: 'image/png', data: Buffer.from('PNG').toString('base64') },
     ])
+    // 各ファイルはサンドボックス内で base64 エンコードして安全に読み出す。
+    expect(client.executeCommand).toHaveBeenNthCalledWith(2, { command: 'base64 -w0 "output/report.csv"' })
+    expect(client.executeCommand).toHaveBeenNthCalledWith(3, { command: 'base64 -w0 "output/chart.png"' })
+  })
+
+  it('maps known extensions including pdf', async () => {
+    const client = makeClient()
+    client.executeCommand
+      .mockResolvedValueOnce('doc.pdf\n')
+      .mockResolvedValueOnce('QQ==')
+    const artifacts = await collectOutputArtifacts(client as any)
+    expect(artifacts).toEqual([{ name: 'doc.pdf', mimeType: 'application/pdf', data: 'QQ==' }])
   })
 
   it('returns empty when output/ is empty', async () => {
@@ -68,12 +79,12 @@ describe('error-string handling', () => {
     expect(await collectOutputArtifacts(client as any)).toEqual([])
   })
 
-  it('collectOutputArtifacts skips files whose read errors', async () => {
+  it('collectOutputArtifacts skips files whose encoding errors', async () => {
     const client = makeClient()
-    client.executeCommand.mockResolvedValue('good.csv\nbad.csv\n')
-    client.readFiles
-      .mockResolvedValueOnce('a,b')
-      .mockResolvedValueOnce('Error: Read failed')
+    client.executeCommand
+      .mockResolvedValueOnce('good.csv\nbad.csv\n') // ls
+      .mockResolvedValueOnce(Buffer.from('a,b').toString('base64')) // base64 good.csv
+      .mockResolvedValueOnce('Error: Read failed') // base64 bad.csv
     const artifacts = await collectOutputArtifacts(client as any)
     expect(artifacts).toEqual([
       { name: 'good.csv', mimeType: 'text/csv', data: Buffer.from('a,b').toString('base64') },

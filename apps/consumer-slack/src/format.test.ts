@@ -1,3 +1,6 @@
+// =============================================================================
+// toSlackMrkdwn の Markdown → Slack mrkdwn 変換ロジックの単体テスト。
+// =============================================================================
 import { describe, it, expect } from 'vitest'
 import { toSlackMrkdwn } from './format'
 

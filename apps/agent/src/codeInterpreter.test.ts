@@ -1,3 +1,7 @@
+// =============================================================================
+// uploadInputFiles・collectOutputArtifacts およびエラー文字列ハンドリングの単体テスト。
+// CodeInterpreter クライアントはモックオブジェクトで代替する。
+// =============================================================================
 import { describe, it, expect, vi } from 'vitest'
 import { uploadInputFiles, collectOutputArtifacts } from './codeInterpreter'
 

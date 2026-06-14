@@ -1,9 +1,15 @@
+// =============================================================================
+// Slack Bolt (Socket Mode) アダプター。app_mention イベントを受けて
+// 添付ファイルをダウンロードし、@app/contract の invokeAgent を通じてエージェントを
+// 呼び出し、応答テキストと成果物ファイルをスレッドに投稿する。
+// =============================================================================
 import 'dotenv/config'
 import { App } from '@slack/bolt'
 import { invokeAgent, type AgentFile } from '@app/contract'
 import { buildAgentRequest } from './mapping'
 import { toSlackMrkdwn } from './format'
 
+// Socket Mode で Slack に接続する Bolt アプリを初期化する。
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
   appToken: process.env.SLACK_APP_TOKEN,
@@ -13,9 +19,11 @@ const app = new App({
 const region = process.env.AWS_REGION ?? 'ap-northeast-1'
 const agentRuntimeArn = process.env.AGENT_RUNTIME_ARN!
 
+// メッセージに添付された Slack ファイルを base64 AgentFile として一括ダウンロードする。
 async function downloadSlackFiles(files: any[] | undefined, token: string): Promise<AgentFile[]> {
   if (!files?.length) return []
   const out: AgentFile[] = []
+  // Bot トークンで private ダウンロード URL に認証してバイナリを取得する。
   for (const f of files) {
     const res = await fetch(f.url_private_download, { headers: { Authorization: `Bearer ${token}` } })
     if (!res.ok) continue
@@ -25,10 +33,12 @@ async function downloadSlackFiles(files: any[] | undefined, token: string): Prom
   return out
 }
 
+// ボットへのメンションを受けてエージェントを呼び出し、応答をスレッドに投稿する。
 app.event('app_mention', async ({ event, client, say }) => {
   const e = event as any
   const threadTs = e.thread_ts ?? e.ts
   try {
+    // 添付ファイルをダウンロードして AgentRequest を組み立てる。
     const files = await downloadSlackFiles(e.files, process.env.SLACK_BOT_TOKEN!)
     const req = buildAgentRequest({
       teamId: e.team ?? 'unknown',

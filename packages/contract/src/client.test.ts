@@ -1,3 +1,7 @@
+// =============================================================================
+// invokeAgent のリトライ挙動・レスポンスパースの単体テスト。
+// BedrockAgentCoreClient は vi.mock でスタブする。
+// =============================================================================
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const sendMock = vi.fn()

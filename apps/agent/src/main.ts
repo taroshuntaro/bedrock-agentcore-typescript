@@ -1,7 +1,12 @@
+// =============================================================================
+// AgentCore Runtime のエントリポイント。BedrockAgentCoreApp に invocationHandler を
+// 登録し、HTTP リクエストを受けて runAgent を呼び出す HTTP サーバーを起動する。
+// =============================================================================
 import { BedrockAgentCoreApp } from 'bedrock-agentcore/runtime'
 import { agentRequestSchema } from '@app/contract'
 import { runAgent, defaultDeps } from './agent'
 
+// 本番依存をプロセス起動時に一度だけ初期化する。
 const deps = defaultDeps()
 
 const app = new BedrockAgentCoreApp({

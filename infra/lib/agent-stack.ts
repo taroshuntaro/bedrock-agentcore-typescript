@@ -1,3 +1,8 @@
+// =============================================================================
+// AgentCore Runtime をデプロイする CDK スタック。
+// リポジトリルートの Dockerfile を linux/arm64 でビルドして ECR に push し、
+// Runtime を作成して Bedrock 呼び出し・CodeInterpreter 操作の IAM 権限を付与する。
+// =============================================================================
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Stack, type StackProps, CfnOutput } from 'aws-cdk-lib'
@@ -9,6 +14,7 @@ import * as agentcore from 'aws-cdk-lib/aws-bedrockagentcore'
 // このファイル（infra/lib）から見たリポジトリルート。Dockerfile が置かれている。
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 
+// Slack エージェント用の AgentCore Runtime および必要な IAM ポリシーを定義するスタック。
 export class AgentStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props)
@@ -20,16 +26,19 @@ export class AgentStack extends Stack {
       platform: Platform.LINUX_ARM64,
     })
 
+    // AgentCore Runtime を作成する。
     const runtime = new agentcore.Runtime(this, 'AgentRuntime', {
       runtimeName: 'slackAgent',
       agentRuntimeArtifact: artifact,
     })
 
+    // Bedrock モデル呼び出し権限を付与する。
     runtime.addToRolePolicy(new iam.PolicyStatement({
       actions: ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream'],
       resources: ['*'],
     }))
 
+    // Code Interpreter セッション操作権限を付与する。
     runtime.addToRolePolicy(new iam.PolicyStatement({
       actions: [
         'bedrock-agentcore:StartCodeInterpreterSession',
@@ -41,6 +50,7 @@ export class AgentStack extends Stack {
       resources: ['*'],
     }))
 
+    // consumer-slack が AGENT_RUNTIME_ARN として参照できるよう出力する。
     new CfnOutput(this, 'AgentRuntimeArn', { value: runtime.agentRuntimeArn })
   }
 }

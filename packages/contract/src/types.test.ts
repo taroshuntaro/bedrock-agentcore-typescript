@@ -1,3 +1,6 @@
+// =============================================================================
+// agentRequestSchema / agentResponseSchema の Zod バリデーション単体テスト。
+// =============================================================================
 import { describe, it, expect } from 'vitest'
 import { agentRequestSchema, agentResponseSchema } from './types'
 

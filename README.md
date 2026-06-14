@@ -91,6 +91,7 @@ SLACK_BOT_TOKEN=xoxb-...
 SLACK_APP_TOKEN=xapp-...
 AWS_REGION=ap-northeast-1
 AGENT_RUNTIME_ARN=arn:aws:bedrock-agentcore:...（デプロイ出力値）
+AWS_PROFILE=your-aws-profile  # SSO 利用時は事前に aws sso login が必要
 ```
 
 ### 2. 起動

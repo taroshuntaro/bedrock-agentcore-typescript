@@ -79,9 +79,11 @@ SLACK_BOT_TOKEN=xoxb-...
 SLACK_APP_TOKEN=xapp-...
 AWS_REGION=ap-northeast-1
 AGENT_RUNTIME_ARN=arn:aws:bedrock-agentcore:ap-northeast-1:...（デプロイ出力値）
+# AWS 認証情報の取得に使うプロファイル（SSO 利用時は事前に aws sso login が必要）
+AWS_PROFILE=your-aws-profile
 ```
 
-> コンシューマーは AWS 認証情報を使って AgentCore Runtime を呼び出します。ローカル起動時は `aws sso login` 等でプロファイルを有効化しておいてください（`AWS_PROFILE` 環境変数で切り替え可能）。
+> コンシューマーは AWS 認証情報を使って AgentCore Runtime を呼び出します。`.env` の `AWS_PROFILE` で使用プロファイルを指定し、SSO の場合は事前に `aws sso login --profile <名前>` を実行しておいてください。環境変数やインスタンスロール等で認証情報を渡す場合は `AWS_PROFILE` は不要です。`Could not load credentials from any providers` が出る場合は、この設定漏れか SSO セッション切れが原因です。
 
 ## 7. 起動
 

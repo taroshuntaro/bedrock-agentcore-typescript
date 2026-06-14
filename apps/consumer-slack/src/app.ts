@@ -41,12 +41,17 @@ app.event('app_mention', async ({ event, client, say }) => {
     // Agent は通常の Markdown を返すため、Slack mrkdwn に変換してから投稿する。
     await say({ text: toSlackMrkdwn(res.text ?? '') || '(空の応答)', thread_ts: threadTs })
 
-    for (const a of res.artifacts ?? []) {
+    // 複数ファイルは file_uploads でまとめて 1 回のリクエストでアップロードする。
+    // 個別に uploadV2 を連続呼び出しすると、同名衝突などで一部しか投稿されないため。
+    const artifacts = res.artifacts ?? []
+    if (artifacts.length > 0) {
       await client.files.uploadV2({
         channel_id: e.channel,
         thread_ts: threadTs,
-        filename: a.name,
-        file: Buffer.from(a.data, 'base64'),
+        file_uploads: artifacts.map((a) => ({
+          filename: a.name,
+          file: Buffer.from(a.data, 'base64'),
+        })),
       })
     }
   } catch (err) {

@@ -18,7 +18,7 @@ describe('runAgent', () => {
     )
 
     expect(client.writeFiles).toHaveBeenCalledTimes(1)
-    expect(generate).toHaveBeenCalledWith('plot it')
+    expect(generate).toHaveBeenCalledWith('plot it\n\n添付ファイル（input/ に配置済み）:\n- input/d.csv')
     expect(res.text).toBe('done')
     expect(res.artifacts?.[0].name).toBe('chart.png')
     expect(ci.stopSession).toHaveBeenCalledTimes(1)

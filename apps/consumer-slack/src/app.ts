@@ -18,6 +18,7 @@ async function downloadSlackFiles(files: any[] | undefined, token: string): Prom
   const out: AgentFile[] = []
   for (const f of files) {
     const res = await fetch(f.url_private_download, { headers: { Authorization: `Bearer ${token}` } })
+    if (!res.ok) continue
     const buf = Buffer.from(await res.arrayBuffer())
     out.push({ name: f.name, mimeType: f.mimetype, data: buf.toString('base64') })
   }

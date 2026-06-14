@@ -2,7 +2,7 @@ import { ToolLoopAgent } from 'ai'
 import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock'
 import { fromNodeProviderChain } from '@aws-sdk/credential-providers'
 import { CodeInterpreterTools } from 'bedrock-agentcore/code-interpreter/vercel-ai'
-import type { AgentRequest, AgentResponse } from '@app/contract'
+import type { AgentFile, AgentRequest, AgentResponse } from '@app/contract'
 import { uploadInputFiles, collectOutputArtifacts } from './codeInterpreter'
 
 const MODEL_ID = process.env.AGENT_MODEL_ID ?? 'global.anthropic.claude-sonnet-4-6'
@@ -41,11 +41,19 @@ export function defaultDeps(): AgentDeps {
   }
 }
 
+/** ファイルがある場合、ファイル名一覧をプロンプトに付与して LLM に認識させる。 */
+function buildPrompt(text: string, files: AgentFile[] | undefined): string {
+  if (!files?.length) return text
+  const listing = files.map((f) => `- input/${f.name}`).join('\n')
+  return `${text}\n\n添付ファイル（input/ に配置済み）:\n${listing}`
+}
+
 export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<AgentResponse> {
   const client = deps.ci.getClient()
   try {
     await uploadInputFiles(client, req.files)
-    const text = await deps.generate(req.text)
+    const prompt = buildPrompt(req.text, req.files)
+    const text = await deps.generate(prompt)
     const artifacts = await collectOutputArtifacts(client)
     return artifacts.length > 0 ? { text, artifacts } : { text }
   } finally {

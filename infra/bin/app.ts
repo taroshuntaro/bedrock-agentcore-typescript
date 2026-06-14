@@ -3,5 +3,8 @@ import { AgentStack } from '../lib/agent-stack.js'
 
 const app = new App()
 new AgentStack(app, 'AgentcoreSlackAgent', {
-  env: { region: process.env.CDK_DEFAULT_REGION, account: process.env.CDK_DEFAULT_ACCOUNT },
+  env: {
+    region: process.env.CDK_DEFAULT_REGION ?? 'ap-northeast-1',
+    account: process.env.CDK_DEFAULT_ACCOUNT,
+  },
 })

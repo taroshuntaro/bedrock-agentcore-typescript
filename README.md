@@ -103,7 +103,7 @@ cp apps/consumer-slack/.env.example apps/consumer-slack/.env
 ```
 SLACK_BOT_TOKEN=xoxb-...
 SLACK_APP_TOKEN=xapp-...
-AWS_REGION=us-east-1
+AWS_REGION=ap-northeast-1
 AGENT_RUNTIME_ARN=arn:aws:bedrock-agentcore:...（デプロイ出力値）
 ```
 
@@ -119,7 +119,7 @@ pnpm --filter @app/consumer-slack dev
 
 ## エージェントのモデル設定
 
-既定のモデルは `global.anthropic.claude-sonnet-4-20250514-v1:0` です。変更する場合は Runtime の環境変数 `AGENT_MODEL_ID` を設定してください。
+既定のモデルは `global.anthropic.claude-sonnet-4-6`（Sonnet 4.6）です。変更する場合は Runtime の環境変数 `AGENT_MODEL_ID` を設定してください。
 
 Code Interpreter は既定の AWS マネージドインタープリタを利用します。`CODE_INTERPRETER_ID` 環境変数で別のインタープリタに上書きできます。
 

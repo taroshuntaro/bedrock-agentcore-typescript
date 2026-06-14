@@ -4,7 +4,7 @@ import { CodeInterpreterTools } from 'bedrock-agentcore/code-interpreter/vercel-
 import type { AgentRequest, AgentResponse } from '@app/contract'
 import { uploadInputFiles, collectOutputArtifacts } from './codeInterpreter'
 
-const MODEL_ID = process.env.AGENT_MODEL_ID ?? 'global.anthropic.claude-sonnet-4-20250514-v1:0'
+const MODEL_ID = process.env.AGENT_MODEL_ID ?? 'global.anthropic.claude-sonnet-4-6'
 
 const INSTRUCTIONS = [
   'あなたは汎用アシスタントです。',
@@ -25,7 +25,7 @@ export interface AgentDeps {
 
 /** 本番用の依存を生成する（テスト対象外）。 */
 export function defaultDeps(): AgentDeps {
-  const ci = new CodeInterpreterTools({ region: process.env.AWS_REGION ?? 'us-east-1' })
+  const ci = new CodeInterpreterTools({ region: process.env.AWS_REGION ?? 'ap-northeast-1' })
   const agent = new ToolLoopAgent({
     model: bedrock(MODEL_ID),
     instructions: INSTRUCTIONS,

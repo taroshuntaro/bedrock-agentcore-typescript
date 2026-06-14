@@ -8,7 +8,7 @@ const app = new App({
   socketMode: true,
 })
 
-const region = process.env.AWS_REGION ?? 'us-east-1'
+const region = process.env.AWS_REGION ?? 'ap-northeast-1'
 const agentRuntimeArn = process.env.AGENT_RUNTIME_ARN!
 
 async function downloadSlackFiles(files: any[] | undefined, token: string): Promise<AgentFile[]> {

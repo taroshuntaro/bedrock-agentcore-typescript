@@ -1,0 +1,16 @@
+{
+  "name": "@app/consumer-slack",
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/app.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@app/contract": "workspace:*",
+    "@slack/bolt": "^4.0.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.16.0"
+  }
+}

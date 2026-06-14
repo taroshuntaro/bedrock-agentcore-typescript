@@ -89,7 +89,7 @@ Slack(thread, file)
 ### 5.4 infra（CDK）
 - ECR リポジトリ（agent イメージ）。
 - AgentCore Runtime（`aws-cdk-lib/aws-bedrockagentcore` の `Runtime` L2、`AgentRuntimeArtifact.fromEcrRepository` で ECR イメージ参照）。
-- Code Interpreter（`CodeInterpreterCustom` L2、ネットワークは既定の Public network）。
+- Code Interpreter は **AWS 管理の既定インタープリタ（identifier 既定）を利用**し、専用のカスタムリソースは作らない。Runtime 実行ロールに Code Interpreter 利用の IAM 権限を付与（将来、専用化したい場合は `CodeInterpreterCustom` を作成し ID を `CODE_INTERPRETER_ID` で渡す）。
 - IAM 実行ロール（Bedrock モデル呼び出し、Code Interpreter 利用権限）。
 
 ## 6. 主要な制約・落とし穴（自己レビューで確認）
@@ -139,7 +139,7 @@ Slack(thread, file)
 
 ## 11. 環境変数（想定）
 - consumer-slack: `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `AGENT_RUNTIME_ARN`, `AWS_REGION`。
-- agent: `AWS_REGION`, モデルID, Code Interpreter 識別子。
+- agent: `AWS_REGION`, `AGENT_MODEL_ID`（既定 `global.anthropic.claude-sonnet-4-20250514-v1:0`）、`CODE_INTERPRETER_ID`（任意。未設定なら AWS 管理の既定インタープリタ）。
 
 ## 参考
 - [Get started with the AgentCore starter toolkit in TypeScript](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-get-started-toolkit-typescript.html)

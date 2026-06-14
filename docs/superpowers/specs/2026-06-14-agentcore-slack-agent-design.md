@@ -73,7 +73,7 @@ Slack(thread, file)
 - 今後追加するツール（WebSearch 等）も同様に「登録するがモデルが判断して呼ぶ」方針で統一する。
 - **ファイル入出力（Code Interpreter）**:
   - 入力: `AgentRequest.files` をサンドボックスへ書き込み、モデルが処理に利用。
-  - 出力: モデルがサンドボックス内で**生成したファイル**（グラフ画像・変換後ファイル・CSV等）を、エージェントがサンドボックスから読み出し（list/read）、`AgentResponse.artifacts` に base64 で載せて返す。コンシューマー側でダウンロード可能にする。
+  - 出力: モデルがサンドボックス内で**生成したファイル**（グラフ画像・変換後ファイル・CSV等）を `output/` に保存する。エージェントは `ls` で列挙後、各ファイルを **`base64 -w0` コマンドで安全にエンコードして読み出し**、`AgentResponse.artifacts` に載せて返す。`readFiles` API は文字列しか返せずバイナリが壊れるため使用しない。コンシューマー側でダウンロード可能にする。
 - `BedrockAgentCoreApp` で HTTP(:8080) 化し、リクエスト解析・ストリーミング・セッション管理を委譲。
 - 出力: `AgentResponse`（テキスト ＋ 生成物 artifacts）。
 - Dockerfile を持ち、ECR へ push。
@@ -83,12 +83,11 @@ Slack(thread, file)
 - `app_mention`（および必要に応じ `message`）を購読。
 - 添付ファイルを bot token でダウンロードし base64 化、`AgentFile[]` を構築。
 - `deriveSessionId` でセッションID生成 → `contract.invokeAgent` 呼び出し。
-- 応答テキストを元スレッドに返信。`AgentResponse.artifacts`（Code Interpreter が生成した出力ファイル）があれば Slack にファイルアップロードしてダウンロード可能にする。
+- 応答テキストを Slack mrkdwn に変換してスレッドに返信。`AgentResponse.artifacts`（Code Interpreter が生成した出力ファイル）があれば `files.uploadV2` の **`file_uploads` で一括アップロード**してダウンロード可能にする（個別 `uploadV2` の連続呼び出しは同名衝突で一部しか投稿されないため不採用）。
 - `contract` のみに依存し、エージェント内部は参照しない。
 
 ### 5.4 infra（CDK）
-- ECR リポジトリ（agent イメージ）。
-- AgentCore Runtime（`aws-cdk-lib/aws-bedrockagentcore` の `Runtime` L2、`AgentRuntimeArtifact.fromEcrRepository` で ECR イメージ参照）。
+- AgentCore Runtime（`aws-cdk-lib/aws-bedrockagentcore` の `Runtime` L2、`AgentRuntimeArtifact.fromAsset` でリポジトリルートの Dockerfile を直接参照。CDK が自動で Docker ビルド・ECR push・Runtime 作成を行う）。
 - Code Interpreter は **AWS 管理の既定インタープリタ（identifier 既定）を利用**し、専用のカスタムリソースは作らない。Runtime 実行ロールに Code Interpreter 利用の IAM 権限を付与（将来、専用化したい場合は `CodeInterpreterCustom` を作成し ID を `CODE_INTERPRETER_ID` で渡す）。
 - IAM 実行ロール（Bedrock モデル呼び出し、Code Interpreter 利用権限）。
 
@@ -96,6 +95,13 @@ Slack(thread, file)
 - **runtimeSessionId は最小33文字・最大256文字**。Slack `thread_ts`（約17文字）は直接使えないため `deriveSessionId` で導出する（修正1）。
 - **Code Interpreter は独立リソース**でネットワークモード（Public/VPC）を持つ。CDK で明示作成し IAM を付与する（修正2）。
 - TypeScript エージェントは **コンテナデプロイ必須**（Python のような直接コードデプロイは不可）。
+- **Code Interpreter の `readFiles` API は文字列しか返せない**ため、バイナリファイル（画像・PDF等）をそのまま読むと壊れる。サンドボックス内で `base64 -w0` コマンドを実行してエンコードしてから読み出す方式で回避している。
+
+### 既知の警告: Slack `files.uploadV2` の filename に拡張子がないと unfurl が不安定（2026-06-15 確認）
+- **現象**: `file_uploads` で複数ファイルをまとめてアップロードした際、Slack Bolt が `[WARN] bolt-app filename supplied 'images' may be missing a proper extension. Missing extensions may result in unexpected unfurl behavior when shared` という警告を出すことがある。
+- **原因**: `file_uploads` でまとめた場合、Slack 内部で各ファイルの親グループに `images` 等の拡張子なしの名前が割り当てられることがある模様。個別ファイルの `filename`（`a.name`）には拡張子が付いており、これはアプリ側の問題ではなく Slack API / Bolt 側の挙動。
+- **影響**: ファイル自体のアップロード・ダウンロードには支障なし。Slack 上でリンク共有した際の unfurl（プレビュー展開）が不安定になる可能性がある。
+- **対応方針**: 現時点では機能上の実害がないため静観。Slack API / Bolt のアップデートで改善される可能性がある。実害が出た場合は `file_uploads` の使い方の見直し、または個別アップロードへの回帰（同名衝突対策を別途入れた上で）を検討する。
 
 ## 7. メモリ / 拡張方針
 - 会話継続は **AgentCore Runtime のセッション（Slack スレッド単位）のみ**。スレッド横断の長期記憶は持たない。

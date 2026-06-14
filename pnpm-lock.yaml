@@ -26,6 +26,9 @@ importers:
       '@app/contract':
         specifier: workspace:*
         version: link:../../packages/contract
+      '@aws-sdk/credential-providers':
+        specifier: ^3.0.0
+        version: 3.1068.0
       ai:
         specifier: ^6.0.0
         version: 6.0.205(zod@4.4.3)

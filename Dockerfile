@@ -1,13 +1,11 @@
-FROM node:20-slim AS build
+FROM node:20-slim
 WORKDIR /repo
 RUN corepack enable
 COPY . .
 RUN pnpm install --frozen-lockfile --filter @app/agent...
-RUN pnpm -r --filter @app/agent... build
-
-FROM node:20-slim
-WORKDIR /repo
-COPY --from=build /repo /repo
 ENV PORT=8080
 EXPOSE 8080
-CMD ["node", "apps/agent/dist/main.js"]
+# tsx でソースを直接実行する。コンパイル方式だと ESM の拡張子付き相対 import や
+# ワークスペース依存（@app/contract）の dist 解決など追加調整が必要になるため、
+# PoC ではソースをそのまま tsx 実行する方式を採用している。
+CMD ["pnpm", "--filter", "@app/agent", "exec", "tsx", "src/main.ts"]

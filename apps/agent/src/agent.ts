@@ -1,5 +1,6 @@
 import { ToolLoopAgent } from 'ai'
-import { bedrock } from '@ai-sdk/amazon-bedrock'
+import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock'
+import { fromNodeProviderChain } from '@aws-sdk/credential-providers'
 import { CodeInterpreterTools } from 'bedrock-agentcore/code-interpreter/vercel-ai'
 import type { AgentRequest, AgentResponse } from '@app/contract'
 import { uploadInputFiles, collectOutputArtifacts } from './codeInterpreter'
@@ -25,7 +26,11 @@ export interface AgentDeps {
 
 /** 本番用の依存を生成する（テスト対象外）。 */
 export function defaultDeps(): AgentDeps {
-  const ci = new CodeInterpreterTools({ region: process.env.AWS_REGION ?? 'ap-northeast-1' })
+  const region = process.env.AWS_REGION ?? 'ap-northeast-1'
+  const ci = new CodeInterpreterTools({ region })
+  // Vercel AI SDK の Bedrock プロバイダは独自の認証解決のため、AWS SDK 標準の
+  // 認証チェーン（SSO・コンテナ実行ロール等）を credentialProvider として明示的に渡す。
+  const bedrock = createAmazonBedrock({ region, credentialProvider: fromNodeProviderChain() })
   const agent = new ToolLoopAgent({
     model: bedrock(MODEL_ID),
     instructions: INSTRUCTIONS,

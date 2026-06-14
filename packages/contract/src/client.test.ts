@@ -8,10 +8,7 @@ vi.mock('@aws-sdk/client-bedrock-agentcore', () => ({
 
 import { invokeAgent } from './client'
 
-function streamOf(obj: unknown) {
-  const bytes = new TextEncoder().encode(JSON.stringify(obj))
-  return { transformToString: async () => new TextDecoder().decode(bytes) }
-}
+function streamOf(obj: unknown) { return { transformToString: async () => JSON.stringify(obj) } }
 
 describe('invokeAgent', () => {
   beforeEach(() => sendMock.mockReset())
@@ -23,6 +20,7 @@ describe('invokeAgent', () => {
       { agentRuntimeArn: 'arn:aws:...:runtime/foo', region: 'us-east-1' },
     )
     expect(res.text).toBe('hi')
+    expect(res.artifacts).toEqual([])
   })
 
   it('retries once then succeeds', async () => {
@@ -31,7 +29,7 @@ describe('invokeAgent', () => {
       .mockResolvedValueOnce({ response: streamOf({ text: 'ok' }) })
     const res = await invokeAgent(
       { sessionId: 'x'.repeat(40), userId: 'U1', text: 'hello' },
-      { agentRuntimeArn: 'arn', region: 'us-east-1', maxRetries: 2, baseDelayMs: 1 },
+      { agentRuntimeArn: 'arn:aws:...:runtime/foo', region: 'us-east-1', maxRetries: 2, baseDelayMs: 1 },
     )
     expect(res.text).toBe('ok')
     expect(sendMock).toHaveBeenCalledTimes(2)

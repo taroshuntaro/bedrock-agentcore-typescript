@@ -7,6 +7,8 @@ import { agentResponseSchema, type AgentRequest, type AgentResponse } from './ty
 export interface InvokeOptions {
   agentRuntimeArn: string
   region: string
+  /** Inject a pre-built client (e.g. in tests). Defaults to a new client for `region`. */
+  client?: BedrockAgentCoreClient
   maxRetries?: number
   baseDelayMs?: number
 }
@@ -17,10 +19,13 @@ export async function invokeAgent(
   req: AgentRequest,
   opts: InvokeOptions,
 ): Promise<AgentResponse> {
-  const client = new BedrockAgentCoreClient({ region: opts.region })
+  const client = opts.client ?? new BedrockAgentCoreClient({ region: opts.region })
   const maxRetries = opts.maxRetries ?? 3
   const baseDelayMs = opts.baseDelayMs ?? 200
 
+  // Only the network call is retried. Parsing happens after the loop, so a
+  // received-but-malformed response fails fast instead of being retried pointlessly.
+  let raw: string | undefined
   let lastErr: unknown
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
@@ -33,12 +38,14 @@ export async function invokeAgent(
           payload: new TextEncoder().encode(JSON.stringify(req)),
         }),
       )
-      const raw = await out.response!.transformToString()
-      return agentResponseSchema.parse(JSON.parse(raw))
+      if (!out.response) throw new Error('InvokeAgentRuntime returned no response body')
+      raw = await out.response.transformToString()
+      break
     } catch (err) {
       lastErr = err
       if (attempt < maxRetries - 1) await sleep(baseDelayMs * 2 ** attempt)
     }
   }
-  throw lastErr
+  if (raw === undefined) throw lastErr
+  return agentResponseSchema.parse(JSON.parse(raw))
 }

@@ -1,3 +1,4 @@
+import 'dotenv/config'
 import { App } from '@slack/bolt'
 import { invokeAgent, type AgentFile } from '@app/contract'
 import { buildAgentRequest } from './mapping'

@@ -812,41 +812,43 @@ git commit -m "feat(agent): BedrockAgentCoreApp エントリを追加"
 
 - [ ] **Step 1: Dockerfile を作成**
 
-`apps/agent/Dockerfile`（モノレポルートからビルドする前提）:
+ビルドコンテキストは**モノレポルート**。pnpm の frozen install はワークスペース全 package.json の存在を前提とするため全体をコピーし、`--filter @app/agent...` で agent とその依存（contract）のみインストール・ビルドする（infra の重い依存を避ける）。docker の `.dockerignore` は**ビルドコンテキスト直下（リポジトリルート）**のものが使われるため、ルートに置く。
+
+`Dockerfile`（リポジトリルートに配置）:
 ```dockerfile
 FROM node:20-slim AS build
 WORKDIR /repo
 RUN corepack enable
-COPY pnpm-workspace.yaml package.json pnpm-lock.yaml tsconfig.base.json ./
-COPY packages/contract ./packages/contract
-COPY apps/agent ./apps/agent
-RUN pnpm install --frozen-lockfile
-RUN pnpm --filter @app/contract build && pnpm --filter @app/agent build
+COPY . .
+RUN pnpm install --frozen-lockfile --filter @app/agent...
+RUN pnpm -r --filter @app/agent... build
 
 FROM node:20-slim
 WORKDIR /repo
-RUN corepack enable
 COPY --from=build /repo /repo
 ENV PORT=8080
 EXPOSE 8080
 CMD ["node", "apps/agent/dist/main.js"]
 ```
 
-`apps/agent/.dockerignore`:
+`.dockerignore`（リポジトリルートに配置）:
 ```
-node_modules
-dist
+**/node_modules
+**/dist
+**/cdk.out
+.git
+**/.env
 ```
 
 - [ ] **Step 2: ビルドできることを確認**
 
-Run: `docker build -f apps/agent/Dockerfile -t agentcore-agent .`
-Expected: イメージビルド成功。
+Run: `docker build -t agentcore-agent .`（リポジトリルートで実行。`Dockerfile` はルート）
+Expected: イメージビルド成功。docker が使えない環境なら、ファイルを作成・コミットし、ビルド未検証である旨を DONE_WITH_CONCERNS で報告する。
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add apps/agent/Dockerfile apps/agent/.dockerignore
+git add Dockerfile .dockerignore
 git commit -m "build(agent): エージェントのコンテナイメージ定義を追加"
 ```
 

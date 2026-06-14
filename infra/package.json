@@ -1,0 +1,18 @@
+{
+  "name": "@app/infra",
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "synth": "cdk synth",
+    "deploy": "cdk deploy",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.160.0",
+    "constructs": "^10.0.0"
+  },
+  "devDependencies": {
+    "aws-cdk": "^2.160.0",
+    "tsx": "^4.16.0"
+  }
+}

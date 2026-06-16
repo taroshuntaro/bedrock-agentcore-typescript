@@ -10,7 +10,7 @@ import { fromNodeProviderChain } from '@aws-sdk/credential-providers'
 import { CodeInterpreterTools } from 'bedrock-agentcore/code-interpreter/vercel-ai'
 import { tavily } from '@tavily/core'
 import type { AgentFile, AgentRequest, AgentResponse } from '@app/contract'
-import { uploadInputFiles, collectOutputArtifacts } from './codeInterpreter'
+import { uploadInputFiles, collectOutputArtifacts, createLoadAttachmentsTool } from './codeInterpreter'
 import { createWebSearchTool, type SearchFn } from './webSearch'
 
 // 使用するモデル ID。環境変数で上書き可能。
@@ -19,8 +19,9 @@ const MODEL_ID = process.env.AGENT_MODEL_ID ?? 'global.anthropic.claude-sonnet-4
 // LLM に渡すシステムインストラクション。ツール使用方針とファイル入出力の規約を指定する。
 const INSTRUCTIONS = [
   'あなたは汎用アシスタントです。',
-  'ファイル処理やコード実行が必要なときだけツール（Code Interpreter）を使ってください。不要なら使わないでください。',
-  '入力ファイルは input/ にあります。生成物は必ず output/<name> にそのまま保存してください（画像・PDF などバイナリも変換せずそのまま保存。base64 化やコピーの複製は不要です）。',
+  '画像や PDF は添付されていれば直接見えています。内容を問われたらそのまま読み取って答えてください。',
+  'ファイルをコードで加工・解析する必要があるときだけ、まず loadAttachments ツールで input/ に取り込んでから Code Interpreter を使ってください。不要なら使わないでください。',
+  '入力ファイルは loadAttachments 実行後に input/ に配置されます。生成物は必ず output/<name> にそのまま保存してください（画像・PDF などバイナリも変換せずそのまま保存。base64 化やコピーの複製は不要です）。',
   '最新情報や事実確認が必要なときは web_search ツールで検索してください。',
   '生成したファイルの内容や base64 文字列を最終応答に貼り付けないでください。応答ではファイルを作成した旨を簡潔に伝えてください。',
 ].join('\n')
@@ -112,6 +113,17 @@ export interface AgentDeps {
   generate: (content: UserContentPart[], files: AgentFile[]) => Promise<string>
 }
 
+// 各ツールの execute をラップし、呼ばれたら used フラグを立てる（サンドボックス使用の追跡）。
+function withUsageTracking<T extends Record<string, any>>(tools: T, mark: () => void): T {
+  const out: Record<string, any> = {}
+  for (const [name, t] of Object.entries(tools)) {
+    out[name] = t?.execute
+      ? { ...t, execute: async (...args: any[]) => { mark(); return t.execute(...args) } }
+      : t
+  }
+  return out as T
+}
+
 // 本番用の依存を生成する（テスト対象外）。
 export function defaultDeps(): AgentDeps {
   const region = process.env.AWS_REGION ?? 'ap-northeast-1'
@@ -128,16 +140,30 @@ export function defaultDeps(): AgentDeps {
   }
   const webSearchTool = createWebSearchTool(search)
 
-  const agent = new ToolLoopAgent({
-    model: bedrock(MODEL_ID),
-    instructions: INSTRUCTIONS,
-    tools: { ...ci.tools, web_search: webSearchTool },
-  })
+  // サンドボックスが使われたかを追跡する。getClient（loadAttachments 経由）と CI ツール実行で true になる。
+  let used = false
+  const getClient = () => { used = true; return ci.getClient() }
+  const trackedCiTools = withUsageTracking(ci.tools, () => { used = true })
+
   return {
-    // NOTE: 暫定実装。サンドボックスの lazy 判定は未対応のため常に false（Task 8 で実使用状況に基づき差し替える）。
-    ci: { getClient: () => ci.getClient(), stopSession: () => ci.stopSession(), wasUsed: () => false },
-    // NOTE: 暫定実装。files は未使用（Task 8 で loadAttachments 束縛・usage 追跡を組み込む）。
-    generate: async (content) => (await agent.generate({ messages: [{ role: 'user', content }] })).text,
+    ci: {
+      getClient,
+      stopSession: () => ci.stopSession(),
+      wasUsed: () => used,
+    },
+    // リクエストごとに loadAttachments を files で束縛して ToolLoopAgent を組む。
+    generate: async (content, files) => {
+      const agent = new ToolLoopAgent({
+        model: bedrock(MODEL_ID),
+        instructions: INSTRUCTIONS,
+        tools: {
+          ...trackedCiTools,
+          web_search: webSearchTool,
+          loadAttachments: createLoadAttachmentsTool({ getClient }, files),
+        },
+      })
+      return (await agent.generate({ messages: [{ role: 'user', content }] })).text
+    },
   }
 }
 

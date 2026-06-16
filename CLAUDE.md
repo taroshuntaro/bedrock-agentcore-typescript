@@ -46,7 +46,7 @@ pnpm --filter @app/consumer-slack dev
 | パッケージ | 名前 | 責務 |
 | --- | --- | --- |
 | `packages/contract` | `@app/contract` | コンシューマー⇔エージェント間の共通契約。Zod スキーマ(AgentRequest/AgentResponse)・`invokeAgent` クライアント・`deriveSessionId` |
-| `apps/agent` | `@app/agent` | AgentCore Runtime 上のエージェント。Vercel AI SDK の ToolLoopAgent + CodeInterpreterTools を `BedrockAgentCoreApp` で HTTP 化 |
+| `apps/agent` | `@app/agent` | AgentCore Runtime 上のエージェント。Vercel AI SDK の ToolLoopAgent + CodeInterpreterTools + Web 検索ツール(Tavily) を `BedrockAgentCoreApp` で HTTP 化。画像/PDF はマルチモーダル(vision)入力として直接処理する |
 | `apps/consumer-slack` | `@app/consumer-slack` | Slack Bolt (Socket Mode) アダプター。Slack イベント → `@app/contract` 経由でエージェント呼び出し → 応答を mrkdwn 変換して投稿 |
 | `infra` | `@app/infra` | AWS CDK スタック。リポジトリルートの Dockerfile を `linux/arm64` でビルドし ECR push → AgentCore Runtime を作成 |
 
@@ -57,7 +57,10 @@ Slack (app_mention)
   → consumer-slack: downloadSlackFiles → buildAgentRequest (mapping.ts)
   → contract: invokeAgent → BedrockAgentCoreClient → InvokeAgentRuntime
   → agent (AgentCore Runtime 上):
-      uploadInputFiles → buildPrompt(text + files) → ToolLoopAgent.generate → collectOutputArtifacts
+      buildMessages(画像/PDF を vision パート化 + 全ファイル一覧) → ToolLoopAgent.generate
+        （tools: Code Interpreter + web_search + loadAttachments）
+      → コードでの処理が必要なときだけ loadAttachments で input/ に取り込み
+      → サンドボックスを使った場合のみ collectOutputArtifacts で output/ を回収
   → consumer-slack: toSlackMrkdwn(text) + files.uploadV2(artifacts)
   → Slack スレッドに応答
 ```
@@ -102,3 +105,6 @@ Conventional Commits + 日本語説明。スコープにはパッケージ名を
 - **複数ファイル投稿は `file_uploads` でまとめる** — 個別に `uploadV2` を連続呼び出しすると一部しか投稿されない。
 - **`invokeAgent` はネットワーク呼び出しのみリトライする** — レスポンスのパース失敗は即エラー（無駄なリトライを防ぐ）。
 - **sessionId は SHA-256 ハッシュ（64 文字）** — AgentCore の runtimeSessionId 制約（33-256 文字）を満たす。同一 Slack スレッドなら同一セッション、別スレッドなら別セッションになる。
+- **マルチモーダル入力は vision 対応モデル前提** — `AGENT_MODEL_ID` が vision 対応 Claude であることを前提とする（既定の `global.anthropic.claude-sonnet-4-6` は対応）。非対応モデルに切り替える場合は `PDF_VISION_ENABLED=false` 等で画像/PDF を listingOnly（一覧表示のみ）に倒す必要がある。
+- **`TAVILY_API_KEY` を必ずデプロイ前に設定する** — `pnpm --filter @app/infra deploy` の前に環境変数として設定すること。未設定だと Web 検索が実行時に静かに失敗する（例外ではなく LLM にエラー文字列として返る）。
+- **画像/PDF のサンドボックス取り込みは lazy** — 添付の画像/PDF は vision パートとして LLM に直接渡し、Code Interpreter サンドボックスへの書き込みは LLM が `loadAttachments` ツールを呼んだときだけ行う。

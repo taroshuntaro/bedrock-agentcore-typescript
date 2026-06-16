@@ -191,12 +191,28 @@ Slack(thread, files)
 
 1. **`CodeInterpreterTools` のセッション開始タイミング** — 構築時か初回ツール呼び出し時か。後者なら
    純 vision クエリでセッション課金ゼロが成立し lazy の旨味が最大化。前者なら省けるのはアップロードのみ。
+   - **実装時の確認結果（解決）**: `CodeInterpreterTools` の各ツールの `execute` 内でセッションが同期的に
+     自動開始する（構築時には開始しない）。`agent.ts` の `withUsageTracking` で各ツールの `execute` を
+     ラップし呼び出し時に `used` フラグを立てるため、lazy 判定（純 vision クエリではサンドボックス未使用）は
+     正しく機能する。また `CodeInterpreter.stopSession()` はセッション未開始時には no-op で安全に呼べるため、
+     `runAgent` の `finally` 節で `wasUsed()` ガードと組み合わせて安全に終了処理できる。
 2. **Vercel AI SDK Bedrock プロバイダの content パート** — `image` パート、および **PDF の `file` パート**が
    message content でサポートされるか、正確な型。未対応なら `PDF_VISION_ENABLED` をオフにして PDF を
    `listingOnly` に退避（F3）。
+   - **実装時の確認結果（確認済み）**: `ai@6` は `TextPart`/`ImagePart`/`FilePart` 型を export している
+     （`@ai-sdk/provider-utils` 由来）。画像は `{ type: 'image', image: Buffer, mediaType }`、PDF は
+     `{ type: 'file', data: Buffer, mediaType: 'application/pdf' }` の形で渡せる。PDF の `file` パートは
+     サポートされるため、`PDF_VISION_ENABLED` は既定 `true` のままで問題ない（`agent.ts` の
+     `DEFAULT_PARTITION_OPTIONS` 参照）。
 3. **Bedrock / Claude の vision 上限の実値** — 画像のバイトサイズ上限（base64 ~5MB 目安）、PDF の MB / ページ数
    （`partitionFiles` のバイトサイズ閾値・F3 の PDF 閾値の根拠）。
+   - **実装時の確認結果（未厳密確認）**: 正確な上限値はドキュメント上で厳密確認できなかったため、保守的な
+     既定値（画像 5MB、PDF 約 4.5MB）を `DEFAULT_PARTITION_OPTIONS`（`agent.ts`）に設定して暫定対応した。
+     実運用でエラーや切り捨てが発生した場合は閾値の再調整が必要になる可能性がある。
 4. **`agentcore.Runtime` CDK construct の `environmentVariables`** プロパティの有無（TAVILY_API_KEY 注入）。
+   - **実装時の確認結果（確認済み）**: `RuntimeProps.environmentVariables?: { [key: string]: string }`
+     として存在する（`aws-cdk-lib` 2.259.0 時点）。最大 50 変数まで設定可能。これにより `TAVILY_API_KEY` を
+     infra スタックから注入できる。
 
 ## 実装順序
 

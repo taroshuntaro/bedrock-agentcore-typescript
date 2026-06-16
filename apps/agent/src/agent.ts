@@ -25,6 +25,49 @@ const INSTRUCTIONS = [
   '生成したファイルの内容や base64 文字列を最終応答に貼り付けないでください。応答ではファイルを作成した旨を簡潔に伝えてください。',
 ].join('\n')
 
+// vision に渡せる画像 MIME（Claude on Bedrock 対応形式）。
+const VISION_IMAGE_MIME = /^image\/(png|jpeg|gif|webp)$/
+
+// ファイル分類のオプション。閾値と PDF の vision 可否を外から渡せるようにし、純関数を保つ。
+export interface PartitionOptions {
+  pdfVisionEnabled: boolean // PDF を vision に渡すか（プロバイダ未対応時は false に倒す）
+  maxImageBytes: number     // vision に渡す画像の最大バイト数
+  maxPdfBytes: number       // vision に渡す PDF の最大バイト数
+}
+
+// 既定の分類オプション。PDF の vision 可否のみ環境変数 PDF_VISION_ENABLED で倒せる。
+export const DEFAULT_PARTITION_OPTIONS: PartitionOptions = {
+  pdfVisionEnabled: process.env.PDF_VISION_ENABLED !== 'false',
+  maxImageBytes: 5 * 1024 * 1024,
+  maxPdfBytes: Math.floor(4.5 * 1024 * 1024),
+}
+
+// base64 文字列のバイト数を概算する（4文字=3バイト。末尾パディングは無視）。
+function base64Bytes(data: string): number {
+  return Math.floor((data.length * 3) / 4)
+}
+
+// 入力ファイルを vision に渡すもの（visionFiles）と一覧表示だけのもの（listingOnly）に分ける。
+export function partitionFiles(
+  files: AgentFile[],
+  opts: PartitionOptions = DEFAULT_PARTITION_OPTIONS,
+): { visionFiles: AgentFile[]; listingOnly: AgentFile[] } {
+  const visionFiles: AgentFile[] = []
+  const listingOnly: AgentFile[] = []
+  for (const f of files) {
+    const bytes = base64Bytes(f.data)
+    // 対応画像でサイズ内 → vision。PDF は有効かつサイズ内 → vision。それ以外 → 一覧のみ。
+    if (VISION_IMAGE_MIME.test(f.mimeType) && bytes <= opts.maxImageBytes) {
+      visionFiles.push(f)
+    } else if (f.mimeType === 'application/pdf' && opts.pdfVisionEnabled && bytes <= opts.maxPdfBytes) {
+      visionFiles.push(f)
+    } else {
+      listingOnly.push(f)
+    }
+  }
+  return { visionFiles, listingOnly }
+}
+
 // Code Interpreter クライアントの最小インターフェース。テスト時にモック注入するために分離する。
 export interface AgentDeps {
   ci: {

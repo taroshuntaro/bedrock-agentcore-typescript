@@ -3,7 +3,12 @@
 // CodeInterpreter と LLM はモックオブジェクトで代替する。
 // =============================================================================
 import { describe, it, expect, vi } from 'vitest'
-import { runAgent } from './agent'
+import { runAgent, partitionFiles, type PartitionOptions } from './agent'
+
+// テスト用の決定的なオプション（環境変数に依存させない）。
+const OPTS: PartitionOptions = { pdfVisionEnabled: true, maxImageBytes: 1000, maxPdfBytes: 1000 }
+// 指定バイト数ぶんの base64 文字列を作る（base64 4文字=3バイト）。
+const b64OfBytes = (bytes: number) => 'A'.repeat(Math.ceil(bytes / 3) * 4)
 
 describe('runAgent', () => {
   it('uploads input files, runs the model, collects artifacts, and stops the session', async () => {
@@ -40,5 +45,41 @@ describe('runAgent', () => {
       runAgent({ sessionId: 'x'.repeat(40), userId: 'U1', text: 'hi' }, { ci: ci as any, generate }),
     ).rejects.toThrow('boom')
     expect(ci.stopSession).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('partitionFiles', () => {
+  it('対応画像と PDF は vision、その他は一覧のみに分類する', () => {
+    const { visionFiles, listingOnly } = partitionFiles([
+      { name: 'a.png', mimeType: 'image/png', data: b64OfBytes(10) },
+      { name: 'b.csv', mimeType: 'text/csv', data: b64OfBytes(10) },
+      { name: 'c.pdf', mimeType: 'application/pdf', data: b64OfBytes(10) },
+    ], OPTS)
+    expect(visionFiles.map((f) => f.name)).toEqual(['a.png', 'c.pdf'])
+    expect(listingOnly.map((f) => f.name)).toEqual(['b.csv'])
+  })
+
+  it('サイズ超過の画像は一覧のみに落とす', () => {
+    const { visionFiles, listingOnly } = partitionFiles([
+      { name: 'big.png', mimeType: 'image/png', data: b64OfBytes(2000) },
+    ], OPTS)
+    expect(visionFiles).toEqual([])
+    expect(listingOnly.map((f) => f.name)).toEqual(['big.png'])
+  })
+
+  it('pdfVisionEnabled が false なら PDF を一覧のみに倒す', () => {
+    const { visionFiles, listingOnly } = partitionFiles([
+      { name: 'c.pdf', mimeType: 'application/pdf', data: b64OfBytes(10) },
+    ], { ...OPTS, pdfVisionEnabled: false })
+    expect(visionFiles).toEqual([])
+    expect(listingOnly.map((f) => f.name)).toEqual(['c.pdf'])
+  })
+
+  it('未対応の画像形式は一覧のみに落とす', () => {
+    const { visionFiles, listingOnly } = partitionFiles([
+      { name: 'x.bmp', mimeType: 'image/bmp', data: b64OfBytes(10) },
+    ], OPTS)
+    expect(visionFiles).toEqual([])
+    expect(listingOnly.map((f) => f.name)).toEqual(['x.bmp'])
   })
 })

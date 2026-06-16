@@ -22,7 +22,17 @@ export interface SearchResponse {
 // 検索を実行する関数の型。テスト時に差し替え可能にするため注入する。
 export type SearchFn = (query: string) => Promise<SearchResponse>
 
+// 各ソースの content の最大文字数。Tavily の content はナビゲーションリンク等の
+// ノイズで数千文字に膨らむことがあり、トークン浪費と要点埋没を招くため切り詰める。
+const MAX_CONTENT_CHARS = 600
+
+// 文字列を最大長で切り詰める（超過時のみ末尾に … を付す）。
+function truncate(s: string, max: number): string {
+  return s.length > max ? `${s.slice(0, max)}…` : s
+}
+
 // 検索結果を LLM 向けの単一文字列に整形する（合成回答 + 上位5ソース）。
+// content はノイズ抑制のため MAX_CONTENT_CHARS で切り詰める。
 export function formatSearchResult(res: SearchResponse): string {
   const lines: string[] = []
   if (res.answer) {
@@ -30,7 +40,7 @@ export function formatSearchResult(res: SearchResponse): string {
   }
   lines.push('ソース:')
   res.results.slice(0, 5).forEach((s, i) => {
-    lines.push(`${i + 1}. ${s.title}`, `   ${s.url}`, `   ${s.content}`)
+    lines.push(`${i + 1}. ${s.title}`, `   ${s.url}`, `   ${truncate(s.content, MAX_CONTENT_CHARS)}`)
   })
   return lines.join('\n')
 }

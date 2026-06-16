@@ -33,6 +33,19 @@ describe('formatSearchResult', () => {
     expect(out).not.toContain('回答:')
     expect(out).toContain('1. t')
   })
+
+  it('長大な content は 600 文字で切り詰めて … を付す', () => {
+    const long = 'x'.repeat(2000)
+    const out = formatSearchResult({ answer: undefined, results: [{ title: 't', url: 'u', content: long }] })
+    expect(out).toContain('x'.repeat(600) + '…')
+    expect(out).not.toContain('x'.repeat(601))
+  })
+
+  it('短い content はそのまま（… を付けない）', () => {
+    const out = formatSearchResult({ answer: undefined, results: [{ title: 't', url: 'u', content: '短い本文' }] })
+    expect(out).toContain('   短い本文')
+    expect(out).not.toContain('…')
+  })
 })
 
 describe('createWebSearchTool', () => {

@@ -8,8 +8,10 @@ import { ToolLoopAgent } from 'ai'
 import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock'
 import { fromNodeProviderChain } from '@aws-sdk/credential-providers'
 import { CodeInterpreterTools } from 'bedrock-agentcore/code-interpreter/vercel-ai'
+import { tavily } from '@tavily/core'
 import type { AgentFile, AgentRequest, AgentResponse } from '@app/contract'
 import { uploadInputFiles, collectOutputArtifacts } from './codeInterpreter'
+import { createWebSearchTool, type SearchFn } from './webSearch'
 
 // 使用するモデル ID。環境変数で上書き可能。
 const MODEL_ID = process.env.AGENT_MODEL_ID ?? 'global.anthropic.claude-sonnet-4-6'
@@ -19,6 +21,7 @@ const INSTRUCTIONS = [
   'あなたは汎用アシスタントです。',
   'ファイル処理やコード実行が必要なときだけツール（Code Interpreter）を使ってください。不要なら使わないでください。',
   '入力ファイルは input/ にあります。生成物は必ず output/<name> にそのまま保存してください（画像・PDF などバイナリも変換せずそのまま保存。base64 化やコピーの複製は不要です）。',
+  '最新情報や事実確認が必要なときは web_search ツールで検索してください。',
   '生成したファイルの内容や base64 文字列を最終応答に貼り付けないでください。応答ではファイルを作成した旨を簡潔に伝えてください。',
 ].join('\n')
 
@@ -38,10 +41,19 @@ export function defaultDeps(): AgentDeps {
   // Vercel AI SDK の Bedrock プロバイダは独自の認証解決のため、AWS SDK 標準の
   // 認証チェーン（SSO・コンテナ実行ロール等）を credentialProvider として明示的に渡す。
   const bedrock = createAmazonBedrock({ region, credentialProvider: fromNodeProviderChain() })
+
+  // Tavily 検索の実体を注入して Web 検索ツールを生成する。
+  const tvly = tavily({ apiKey: process.env.TAVILY_API_KEY })
+  const search: SearchFn = async (query) => {
+    const r = await tvly.search(query, { includeAnswer: true, maxResults: 5 })
+    return { answer: r.answer, results: r.results.map((x) => ({ title: x.title, url: x.url, content: x.content })) }
+  }
+  const webSearchTool = createWebSearchTool(search)
+
   const agent = new ToolLoopAgent({
     model: bedrock(MODEL_ID),
     instructions: INSTRUCTIONS,
-    tools: ci.tools,
+    tools: { ...ci.tools, webSearch: webSearchTool },
   })
   return {
     ci,

@@ -2,6 +2,8 @@
 // Code Interpreter サンドボックスとのファイル入出力を担うユーティリティ群。
 // uploadInputFiles でリクエストのファイルをサンドボックスに配置し、
 // collectOutputArtifacts でエージェントが生成したファイルを base64 化して回収する。
+// また createLoadAttachmentsTool は、リクエストの添付ファイルを LLM の要求に応じて
+// サンドボックスへ遅延読み込みするブリッジツールを提供する。
 // =============================================================================
 import type { CodeInterpreter } from 'bedrock-agentcore/code-interpreter'
 import type { AgentArtifact, AgentFile } from '@app/contract'

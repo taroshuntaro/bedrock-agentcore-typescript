@@ -16,15 +16,28 @@ import { createWebSearchTool, type SearchFn } from './webSearch'
 // 使用するモデル ID。環境変数で上書き可能。
 const MODEL_ID = process.env.AGENT_MODEL_ID ?? 'global.anthropic.claude-sonnet-4-6'
 
-// LLM に渡すシステムインストラクション。ツール使用方針とファイル入出力の規約を指定する。
-const INSTRUCTIONS = [
-  'あなたは汎用アシスタントです。',
-  '画像や PDF は添付されていれば直接見えています。内容を問われたらそのまま読み取って答えてください。',
-  'ファイルをコードで加工・解析する必要があるときだけ、まず loadAttachments ツールで input/ に取り込んでから Code Interpreter を使ってください。不要なら使わないでください。',
-  '入力ファイルは loadAttachments 実行後に input/ に配置されます。生成物は必ず output/<name> にそのまま保存してください（画像・PDF などバイナリも変換せずそのまま保存。base64 化やコピーの複製は不要です）。',
-  '最新情報や事実確認が必要なときは web_search ツールで検索してください。',
-  '生成したファイルの内容や base64 文字列を最終応答に貼り付けないでください。応答ではファイルを作成した旨を簡潔に伝えてください。',
-].join('\n')
+// LLM に渡すシステムインストラクションを組み立てる純関数。
+// 現在日時(JST)を毎リクエスト埋め込み、時事質問では web_search による grounding を強制する。
+// モデルの学習知識は古いため、現在日時のアンカーが無いと「今日のニュース」に過去の記憶で答えてしまう。
+export function buildInstructions(now: Date): string {
+  // 現在日時を日本時間で人間可読に整形する（例: 2026年6月17日水曜日 12:00）。
+  const nowJst = new Intl.DateTimeFormat('ja-JP', {
+    timeZone: 'Asia/Tokyo',
+    dateStyle: 'full',
+    timeStyle: 'short',
+  }).format(now)
+  return [
+    `現在の日時は ${nowJst}（日本時間）です。あなたの学習データはこれより古く、最新の出来事・ニュース・時事・株価・製品・人物の近況などは正しく知りません。`,
+    'あなたは汎用アシスタントです。',
+    // web 検索による grounding を最優先で徹底させる（自前の古い記憶で時事を答えさせない）。
+    '「今日」「最近」「最新」「現在」「ここ数日」など時間に依存する質問や、ニュース・時事・株価・為替・製品・人物の近況など最新性が必要な質問では、必ず web_search ツールで検索し、回答は検索結果のみに基づいて作成してください。検索していない時事情報を自分の記憶から答えないでください（古い情報になります）。検索結果と自分の記憶が食い違うときは、必ず検索結果を優先してください。',
+    '時事・最新情報を答えるときは、可能な範囲で情報の日付や出典（URL）に触れてください。',
+    '画像や PDF は添付されていれば直接見えています。内容を問われたらそのまま読み取って答えてください。',
+    'ファイルをコードで加工・解析する必要があるときだけ、まず loadAttachments ツールで input/ に取り込んでから Code Interpreter を使ってください。不要なら使わないでください。',
+    '入力ファイルは loadAttachments 実行後に input/ に配置されます。生成物は必ず output/<name> にそのまま保存してください（画像・PDF などバイナリも変換せずそのまま保存。base64 化やコピーの複製は不要です）。',
+    '生成したファイルの内容や base64 文字列を最終応答に貼り付けないでください。応答ではファイルを作成した旨を簡潔に伝えてください。',
+  ].join('\n')
+}
 
 // vision に渡せる画像 MIME（Claude on Bedrock 対応形式）。
 const VISION_IMAGE_MIME = /^image\/(png|jpeg|gif|webp)$/
@@ -155,7 +168,8 @@ export function defaultDeps(): AgentDeps {
     generate: async (content, files) => {
       const agent = new ToolLoopAgent({
         model: bedrock(MODEL_ID),
-        instructions: INSTRUCTIONS,
+        // 現在日時(JST)を毎回埋め込み、時事質問で古い記憶に頼らせない。
+        instructions: buildInstructions(new Date()),
         tools: {
           ...trackedCiTools,
           web_search: webSearchTool,

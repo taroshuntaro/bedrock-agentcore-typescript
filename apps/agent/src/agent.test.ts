@@ -3,7 +3,7 @@
 // CodeInterpreter と LLM はモックオブジェクトで代替する。
 // =============================================================================
 import { describe, it, expect, vi } from 'vitest'
-import { runAgent, partitionFiles, type PartitionOptions, buildMessages } from './agent'
+import { runAgent, partitionFiles, type PartitionOptions, buildMessages, buildInstructions } from './agent'
 
 // テスト用の決定的なオプション（環境変数に依存させない）。
 const OPTS: PartitionOptions = { pdfVisionEnabled: true, maxImageBytes: 1000, maxPdfBytes: 1000 }
@@ -70,6 +70,28 @@ describe('runAgent', () => {
       runAgent({ sessionId: 'x'.repeat(40), userId: 'U1', text: 'hi' }, { ci: ci as any, generate }),
     ).rejects.toThrow('boom')
     expect(ci.stopSession).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('buildInstructions', () => {
+  it('現在日時を日本時間で埋め込む', () => {
+    // UTC 2026-06-17T03:00:00Z = JST 2026年6月17日 12:00。
+    const s = buildInstructions(new Date('2026-06-17T03:00:00Z'))
+    expect(s).toContain('2026年6月17日')
+    expect(s).toContain('日本時間')
+  })
+
+  it('日付境界をまたぐ深夜 UTC でも JST の日付になる', () => {
+    // UTC 2026-06-16T20:00:00Z = JST 2026年6月17日 05:00。
+    const s = buildInstructions(new Date('2026-06-16T20:00:00Z'))
+    expect(s).toContain('2026年6月17日')
+  })
+
+  it('時事質問では web_search で grounding するよう強制する', () => {
+    const s = buildInstructions(new Date('2026-06-17T03:00:00Z'))
+    expect(s).toContain('web_search')
+    expect(s).toContain('検索結果のみに基づいて')
+    expect(s).toContain('検索結果を優先')
   })
 })
 

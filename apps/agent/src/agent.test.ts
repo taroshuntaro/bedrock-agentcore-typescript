@@ -3,7 +3,7 @@
 // CodeInterpreter と LLM はモックオブジェクトで代替する。
 // =============================================================================
 import { describe, it, expect, vi } from 'vitest'
-import { runAgent, partitionFiles, type PartitionOptions } from './agent'
+import { runAgent, partitionFiles, type PartitionOptions, buildMessages } from './agent'
 
 // テスト用の決定的なオプション（環境変数に依存させない）。
 const OPTS: PartitionOptions = { pdfVisionEnabled: true, maxImageBytes: 1000, maxPdfBytes: 1000 }
@@ -81,5 +81,35 @@ describe('partitionFiles', () => {
     ], OPTS)
     expect(visionFiles).toEqual([])
     expect(listingOnly.map((f) => f.name)).toEqual(['x.bmp'])
+  })
+})
+
+describe('buildMessages', () => {
+  it('ファイルが無ければテキストのみのパートを返す', () => {
+    expect(buildMessages('こんにちは', [])).toEqual([{ type: 'text', text: 'こんにちは' }])
+  })
+
+  it('画像は vision パートに、全ファイルは一覧テキストに含める', () => {
+    const parts = buildMessages('説明して', [
+      { name: 'a.png', mimeType: 'image/png', data: b64OfBytes(10) },
+      { name: 'b.csv', mimeType: 'text/csv', data: b64OfBytes(10) },
+    ], OPTS)
+    expect(parts[0]).toEqual({ type: 'text', text: '説明して' })
+    const image = parts.find((p: any) => p.type === 'image') as any
+    expect(image.mediaType).toBe('image/png')
+    expect(Buffer.isBuffer(image.image)).toBe(true)
+    const listing = parts[parts.length - 1] as any
+    expect(listing.type).toBe('text')
+    expect(listing.text).toContain('- input/a.png (image/png)')
+    expect(listing.text).toContain('- input/b.csv (text/csv)')
+  })
+
+  it('PDF は file パートとして含める', () => {
+    const parts = buildMessages('読んで', [
+      { name: 'c.pdf', mimeType: 'application/pdf', data: b64OfBytes(10) },
+    ], OPTS)
+    const file = parts.find((p: any) => p.type === 'file') as any
+    expect(file.mediaType).toBe('application/pdf')
+    expect(Buffer.isBuffer(file.data)).toBe(true)
   })
 })

@@ -4,7 +4,7 @@
 // ファイルの入出力を伴う汎用タスクを処理する。
 // runAgent が唯一の公開エントリポイント。defaultDeps は本番依存を生成する。
 // =============================================================================
-import { ToolLoopAgent } from 'ai'
+import { ToolLoopAgent, type TextPart, type ImagePart, type FilePart } from 'ai'
 import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock'
 import { fromNodeProviderChain } from '@aws-sdk/credential-providers'
 import { CodeInterpreterTools } from 'bedrock-agentcore/code-interpreter/vercel-ai'
@@ -66,6 +66,39 @@ export function partitionFiles(
     }
   }
   return { visionFiles, listingOnly }
+}
+
+// ユーザーメッセージの content パート（テキスト / 画像 / ファイル）。
+export type UserContentPart = TextPart | ImagePart | FilePart
+
+// テキストと添付ファイルからユーザーメッセージの content パート配列を組み立てる。
+// 画像/PDF は vision パートとして渡し、全ファイル名は一覧テキストとして添える。
+export function buildMessages(
+  text: string,
+  files: AgentFile[] = [],
+  opts: PartitionOptions = DEFAULT_PARTITION_OPTIONS,
+): UserContentPart[] {
+  if (files.length === 0) return [{ type: 'text', text }]
+
+  const { visionFiles } = partitionFiles(files, opts)
+  const parts: UserContentPart[] = [{ type: 'text', text }]
+
+  // vision に渡せる画像/PDF をパート化する（PDF は file、画像は image）。
+  for (const f of visionFiles) {
+    if (f.mimeType === 'application/pdf') {
+      parts.push({ type: 'file', data: Buffer.from(f.data, 'base64'), mediaType: 'application/pdf' })
+    } else {
+      parts.push({ type: 'image', image: Buffer.from(f.data, 'base64'), mediaType: f.mimeType })
+    }
+  }
+
+  // 全ファイルを一覧テキストで提示する。コード処理には loadAttachments での取り込みが必要。
+  const listing = files.map((f) => `- input/${f.name} (${f.mimeType})`).join('\n')
+  parts.push({
+    type: 'text',
+    text: `添付ファイル（コードで処理する場合は loadAttachments で input/ に取り込む）:\n${listing}`,
+  })
+  return parts
 }
 
 // Code Interpreter クライアントの最小インターフェース。テスト時にモック注入するために分離する。

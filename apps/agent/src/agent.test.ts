@@ -11,14 +11,17 @@ const OPTS: PartitionOptions = { pdfVisionEnabled: true, maxImageBytes: 1000, ma
 const b64OfBytes = (bytes: number) => 'A'.repeat(Math.ceil(bytes / 3) * 4)
 
 describe('runAgent', () => {
-  it('uploads input files, runs the model, collects artifacts, and stops the session', async () => {
+  it('buildMessages の content と files で generate を呼び、used なら artifacts を回収する', async () => {
     const client = {
-      writeFiles: vi.fn().mockResolvedValue('ok'),
       executeCommand: vi.fn()
         .mockResolvedValueOnce('chart.png\n') // ls output/
         .mockResolvedValueOnce(Buffer.from('PNG').toString('base64')), // base64 output/chart.png
     }
-    const ci = { getClient: () => client, stopSession: vi.fn().mockResolvedValue(undefined) }
+    const ci = {
+      getClient: () => client,
+      stopSession: vi.fn().mockResolvedValue(undefined),
+      wasUsed: () => true, // サンドボックスが使われた
+    }
     const generate = vi.fn().mockResolvedValue('done')
 
     const res = await runAgent(
@@ -26,19 +29,41 @@ describe('runAgent', () => {
       { ci: ci as any, generate },
     )
 
-    expect(client.writeFiles).toHaveBeenCalledTimes(1)
-    expect(generate).toHaveBeenCalledWith('plot it\n\n添付ファイル（input/ に配置済み）:\n- input/d.csv')
+    // content（buildMessages の戻り）と files が渡る。
+    const [content, files] = generate.mock.calls[0]
+    expect(content[0]).toEqual({ type: 'text', text: 'plot it' })
+    expect(files).toEqual([{ name: 'd.csv', mimeType: 'text/csv', data: 'MSwy' }])
     expect(res.text).toBe('done')
     expect(res.artifacts?.[0].name).toBe('chart.png')
     expect(ci.stopSession).toHaveBeenCalledTimes(1)
   })
 
-  it('stops the session even if generate throws', async () => {
-    const client = {
-      writeFiles: vi.fn().mockResolvedValue('ok'),
-      executeCommand: vi.fn().mockResolvedValue(''),
+  it('サンドボックス未使用なら artifacts を回収せずセッションも停止しない', async () => {
+    const client = { executeCommand: vi.fn() }
+    const ci = {
+      getClient: () => client,
+      stopSession: vi.fn().mockResolvedValue(undefined),
+      wasUsed: () => false, // 純 vision クエリ
     }
-    const ci = { getClient: () => client, stopSession: vi.fn().mockResolvedValue(undefined) }
+    const generate = vi.fn().mockResolvedValue('画像は猫です')
+
+    const res = await runAgent(
+      { sessionId: 'x'.repeat(40), userId: 'U1', text: 'これは何？', files: [{ name: 'a.png', mimeType: 'image/png', data: 'AAEC' }] },
+      { ci: ci as any, generate },
+    )
+
+    expect(res.text).toBe('画像は猫です')
+    expect(res.artifacts).toBeUndefined()
+    expect(client.executeCommand).not.toHaveBeenCalled()
+    expect(ci.stopSession).not.toHaveBeenCalled()
+  })
+
+  it('used なら generate が例外でもセッションを停止する', async () => {
+    const ci = {
+      getClient: () => ({ executeCommand: vi.fn() }),
+      stopSession: vi.fn().mockResolvedValue(undefined),
+      wasUsed: () => true,
+    }
     const generate = vi.fn().mockRejectedValue(new Error('boom'))
 
     await expect(

@@ -101,13 +101,15 @@ export function buildMessages(
   return parts
 }
 
-// Code Interpreter クライアントの最小インターフェース。テスト時にモック注入するために分離する。
+// Code Interpreter クライアントと LLM 呼び出しの最小インターフェース。テスト時にモック注入する。
 export interface AgentDeps {
   ci: {
     getClient: () => Parameters<typeof uploadInputFiles>[0] // Code Interpreter クライアントを返す
     stopSession: () => Promise<void>                        // セッションを終了してリソースを解放する
+    wasUsed: () => boolean                                  // サンドボックスが使われたか（lazy 判定）
   }
-  generate: (prompt: string) => Promise<string> // LLM にプロンプトを送って応答テキストを返す
+  // content（vision パート含む）と files（loadAttachments 束縛用）を受けて応答テキストを返す。
+  generate: (content: UserContentPart[], files: AgentFile[]) => Promise<string>
 }
 
 // 本番用の依存を生成する（テスト対象外）。
@@ -132,31 +134,24 @@ export function defaultDeps(): AgentDeps {
     tools: { ...ci.tools, web_search: webSearchTool },
   })
   return {
-    ci,
-    generate: async (prompt) => (await agent.generate({ prompt })).text,
+    // NOTE: 暫定実装。サンドボックスの lazy 判定は未対応のため常に false（Task 8 で実使用状況に基づき差し替える）。
+    ci: { getClient: () => ci.getClient(), stopSession: () => ci.stopSession(), wasUsed: () => false },
+    // NOTE: 暫定実装。files は未使用（Task 8 で loadAttachments 束縛・usage 追跡を組み込む）。
+    generate: async (content) => (await agent.generate({ messages: [{ role: 'user', content }] })).text,
   }
-}
-
-// ファイルがある場合、ファイル名一覧をプロンプトに付与して LLM に認識させる。
-function buildPrompt(text: string, files: AgentFile[] | undefined): string {
-  if (!files?.length) return text
-  const listing = files.map((f) => `- input/${f.name}`).join('\n')
-  return `${text}\n\n添付ファイル（input/ に配置済み）:\n${listing}`
 }
 
 // リクエストを受けてエージェントを実行し、テキスト応答と出力アーティファクトを返す。
 export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<AgentResponse> {
-  const client = deps.ci.getClient()
   try {
-    // 入力ファイルをサンドボックスにアップロードしてからプロンプトを生成・実行する。
-    await uploadInputFiles(client, req.files)
-    const prompt = buildPrompt(req.text, req.files)
-    const text = await deps.generate(prompt)
-    // output/ に生成されたファイルを base64 アーティファクトとして回収する。
-    const artifacts = await collectOutputArtifacts(client)
+    // 画像/PDF を vision パート化した content を組み立てて LLM を実行する（アップロードは lazy）。
+    const content = buildMessages(req.text, req.files)
+    const text = await deps.generate(content, req.files ?? [])
+    // サンドボックスが使われた場合のみ output/ を回収する（純 vision クエリではセッション不要）。
+    const artifacts = deps.ci.wasUsed() ? await collectOutputArtifacts(deps.ci.getClient()) : []
     return artifacts.length > 0 ? { text, artifacts } : { text }
   } finally {
-    // 例外の有無に関わらず Code Interpreter セッションを終了してリソースを解放する。
-    await deps.ci.stopSession()
+    // セッションが開始済み（used）のときだけ停止してリソースを解放する。
+    if (deps.ci.wasUsed()) await deps.ci.stopSession()
   }
 }

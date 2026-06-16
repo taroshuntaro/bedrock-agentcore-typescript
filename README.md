@@ -107,8 +107,10 @@ export TAVILY_API_KEY=tvly-...
 ### 4. デプロイ（ビルド〜push〜Runtime 作成まで一括）
 
 ```bash
-pnpm --filter @app/infra deploy
+pnpm --filter @app/infra run deploy
 ```
+
+> `deploy` は pnpm の組み込みコマンドと名前が衝突するため、`run` を省略すると `ERR_PNPM_INVALID_DEPLOY_TARGET` になります。
 
 完了後、出力の `AgentRuntimeArn` を控えておきます（`.env` の `AGENT_RUNTIME_ARN` に設定）。コードを変更したら、再度このコマンドを実行するだけで新しいイメージがビルド・反映されます。
 

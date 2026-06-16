@@ -53,7 +53,7 @@ export function defaultDeps(): AgentDeps {
   const agent = new ToolLoopAgent({
     model: bedrock(MODEL_ID),
     instructions: INSTRUCTIONS,
-    tools: { ...ci.tools, webSearch: webSearchTool },
+    tools: { ...ci.tools, web_search: webSearchTool },
   })
   return {
     ci,

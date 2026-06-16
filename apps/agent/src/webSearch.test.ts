@@ -2,7 +2,7 @@
 // formatSearchResult（検索結果整形）と createWebSearchTool（失敗時挙動）の単体テスト。
 // =============================================================================
 import { describe, it, expect } from 'vitest'
-import { formatSearchResult } from './webSearch'
+import { formatSearchResult, createWebSearchTool } from './webSearch'
 
 describe('formatSearchResult', () => {
   it('合成回答と上位ソースを整形する', () => {
@@ -32,5 +32,22 @@ describe('formatSearchResult', () => {
     const out = formatSearchResult({ answer: undefined, results: [{ title: 't', url: 'u', content: 'c' }] })
     expect(out).not.toContain('回答:')
     expect(out).toContain('1. t')
+  })
+})
+
+describe('createWebSearchTool', () => {
+  it('検索成功時は整形結果を返す', async () => {
+    const t = createWebSearchTool(async () => ({
+      answer: 'ans', results: [{ title: 't', url: 'u', content: 'c' }],
+    }))
+    const out = await (t as any).execute({ query: 'q' }, {} as any)
+    expect(out).toContain('回答: ans')
+    expect(out).toContain('1. t')
+  })
+
+  it('検索失敗時はエラー文字列を返し例外を投げない', async () => {
+    const t = createWebSearchTool(async () => { throw new Error('rate limit') })
+    const out = await (t as any).execute({ query: 'q' }, {} as any)
+    expect(out).toBe('検索に失敗しました: rate limit')
   })
 })

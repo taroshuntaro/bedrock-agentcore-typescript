@@ -26,10 +26,14 @@ export class AgentStack extends Stack {
       platform: Platform.LINUX_ARM64,
     })
 
-    // AgentCore Runtime を作成する。
+    // AgentCore Runtime を作成する。Web 検索ツール用に TAVILY_API_KEY をデプロイ時の
+    // 環境変数から注入する（値はコミットしない）。
     const runtime = new agentcore.Runtime(this, 'AgentRuntime', {
       runtimeName: 'slackAgent',
       agentRuntimeArtifact: artifact,
+      environmentVariables: {
+        TAVILY_API_KEY: process.env.TAVILY_API_KEY ?? '',
+      },
     })
 
     // Bedrock モデル呼び出し権限を付与する。

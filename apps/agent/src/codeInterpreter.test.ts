@@ -3,7 +3,7 @@
 // CodeInterpreter クライアントはモックオブジェクトで代替する。
 // =============================================================================
 import { describe, it, expect, vi } from 'vitest'
-import { uploadInputFiles, collectOutputArtifacts } from './codeInterpreter'
+import { uploadInputFiles, collectOutputArtifacts, createLoadAttachmentsTool } from './codeInterpreter'
 
 function makeClient() {
   return {
@@ -93,5 +93,27 @@ describe('error-string handling', () => {
     expect(artifacts).toEqual([
       { name: 'good.csv', mimeType: 'text/csv', data: Buffer.from('a,b').toString('base64') },
     ])
+  })
+})
+
+describe('createLoadAttachmentsTool', () => {
+  it('getClient のクライアントに全ファイルを書き込む', async () => {
+    const client = makeClient()
+    const files = [
+      { name: 'a.csv', mimeType: 'text/csv', data: Buffer.from('1,2').toString('base64') },
+      { name: 'img.png', mimeType: 'image/png', data: 'AAEC' },
+    ]
+    const t = createLoadAttachmentsTool({ getClient: () => client as any }, files)
+    const out = await (t as any).execute({}, {} as any)
+    expect(client.writeFiles).toHaveBeenCalledTimes(1)
+    expect(out).toContain('2 件')
+  })
+
+  it('添付が無ければその旨を返し書き込まない', async () => {
+    const client = makeClient()
+    const t = createLoadAttachmentsTool({ getClient: () => client as any }, [])
+    const out = await (t as any).execute({}, {} as any)
+    expect(client.writeFiles).not.toHaveBeenCalled()
+    expect(out).toContain('添付ファイルはありません')
   })
 })

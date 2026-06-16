@@ -5,6 +5,8 @@
 // =============================================================================
 import type { CodeInterpreter } from 'bedrock-agentcore/code-interpreter'
 import type { AgentArtifact, AgentFile } from '@app/contract'
+import { tool } from 'ai'
+import { z } from 'zod'
 
 // テキストとみなす MIME タイプのパターン。該当するファイルは UTF-8 デコードして書き込む。
 const TEXT_MIME = /^(text\/|application\/(json|csv|xml|x-ndjson|javascript))/
@@ -55,4 +57,23 @@ function guessMime(name: string): string {
   if (name.endsWith('.txt')) return 'text/plain'
   if (name.endsWith('.pdf')) return 'application/pdf'
   return 'application/octet-stream'
+}
+
+// 添付ファイルを Code Interpreter の input/ に取り込むブリッジツールを生成する。
+// getClient は ci と同一セッションのクライアントを返すこと（書き込みを ci のコードツールから読めるようにするため）。
+export function createLoadAttachmentsTool(
+  ci: { getClient: () => CodeInterpreter },
+  files: AgentFile[],
+) {
+  return tool({
+    description: '添付ファイルを Code Interpreter の input/ に取り込む。ファイルをコードで処理する前に必ず呼ぶ。',
+    inputSchema: z.object({}),
+    execute: async () => {
+      // 既存の振り分けロジック（テキスト=デコード / バイナリ=.b64）を再利用して書き込む。
+      await uploadInputFiles(ci.getClient(), files)
+      return files.length > 0
+        ? `input/ に ${files.length} 件のファイルを配置しました。`
+        : '添付ファイルはありません。'
+    },
+  })
 }

@@ -8,10 +8,11 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@app/contract": "workspace:*",
-    "ai": "^6.0.0",
     "@ai-sdk/amazon-bedrock": "^4.0.0",
+    "@app/contract": "workspace:*",
     "@aws-sdk/credential-providers": "^3.0.0",
+    "@tavily/core": "^0.7.6",
+    "ai": "^6.0.0",
     "bedrock-agentcore": "^0.2.4",
     "zod": "^4.0.0"
   },

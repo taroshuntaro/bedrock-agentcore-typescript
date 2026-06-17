@@ -3,7 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 - プロジェクト全体像・前提条件: [README.md](README.md)
-- Slack アプリのセットアップ手順: [docs/slack-setup.md](docs/slack-setup.md)
+- Slack アプリのセットアップ手順: [docs/slack-setup.md](docs/slack-setup.md)（※ 現在 Socket Mode 前提のため Events API 版への更新が必要）
 - 設計/計画ドキュメント: [docs/superpowers/specs](docs/superpowers/specs) / [docs/superpowers/plans](docs/superpowers/plans)
 
 ## プロジェクト概要
@@ -55,7 +55,7 @@ pnpm --filter @app/infra run deploy   # AgentcoreSlackAgent と AgentcoreSlackBo
 ```
 Slack (app_mention / DM)
   → 受信 Lambda (Function URL, authType NONE):
-      verifySlackSignature → x-slack-retry-num を ignore → SQS/直接起動で応答 Lambda に委譲 → 200 ACK
+      verifySlackSignature → x-slack-retry-num を ignore → 応答 Lambda を非同期 Invoke（InvocationType=Event）で起動 → 200 ACK
   → 応答 Lambda:
       decideEvent → downloadSlackFiles → buildAgentRequest (mapping.ts)
       → contract: invokeAgent → BedrockAgentCoreClient → InvokeAgentRuntime

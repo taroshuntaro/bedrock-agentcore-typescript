@@ -3,16 +3,16 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx src/app.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@app/contract": "workspace:*",
-    "@slack/bolt": "^4.0.0",
-    "dotenv": "^16.4.5",
+    "@aws-sdk/client-lambda": "^3.0.0",
+    "@aws-sdk/client-ssm": "^3.0.0",
+    "@slack/web-api": "^7.0.0",
     "slackify-markdown": "^5.0.0"
   },
   "devDependencies": {
-    "tsx": "^4.16.0"
+    "@types/node": "^20.14.0"
   }
 }

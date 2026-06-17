@@ -16,6 +16,9 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../
 
 // Slack エージェント用の AgentCore Runtime および必要な IAM ポリシーを定義するスタック。
 export class AgentStack extends Stack {
+  // SlackBotStack から参照するための AgentCore Runtime ARN。
+  public readonly agentRuntimeArn: string
+
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props)
 
@@ -35,6 +38,9 @@ export class AgentStack extends Stack {
         TAVILY_API_KEY: process.env.TAVILY_API_KEY ?? '',
       },
     })
+
+    // 他スタックが参照できるよう ARN を公開する。
+    this.agentRuntimeArn = runtime.agentRuntimeArn
 
     // Bedrock モデル呼び出し権限を付与する。
     runtime.addToRolePolicy(new iam.PolicyStatement({

@@ -2,7 +2,7 @@
 
 ## 概要
 
-pnpm モノレポ構成の PoC プロジェクト。Slack（ローカル Socket Mode）から AWS Bedrock AgentCore 上の Vercel AI SDK エージェントを呼び出す、汎用エージェントです。エージェントは次の能力を持ちます。
+pnpm モノレポ構成の PoC プロジェクト。Slack（Events API + サーバーレス Lambda）から AWS Bedrock AgentCore 上の Vercel AI SDK エージェントを呼び出す、汎用エージェントです。エージェントは次の能力を持ちます。
 
 - **Code Interpreter**：ファイルを入力としたコード実行・データ処理と、生成ファイルの出力（ダウンロード）。
 - **マルチモーダル入力**：添付された画像 / PDF をモデルの vision 入力として直接「見せる」。
@@ -41,7 +41,9 @@ pnpm モノレポ構成の PoC プロジェクト。Slack（ローカル Socket 
 │   │   │                 #   + loadAttachments（添付の遅延取り込み）
 │   │   │                 #   + 画像/PDF の vision 入力
 │   │   │                 # BedrockAgentCoreApp で HTTP エンドポイント化
-│   └── consumer-slack/   # Slack Bolt (Socket Mode) アダプター
+│   └── consumer-slack/   # Slack Events API (Function URL) アダプター
+│                         # 受信 Lambda（署名検証・即時 ACK）+
+│                         # 応答 Lambda（エージェント呼び出し・投稿）
 ├── packages/
 │   └── contract/         # コンシューマー⇔エージェントの共通契約
 │                         # 型・invokeAgent クライアント・deriveSessionId
@@ -57,7 +59,7 @@ pnpm モノレポ構成の PoC プロジェクト。Slack（ローカル Socket 
 - AWS 認証情報設定済み（`aws configure` または環境変数）
 - Bedrock の利用したいモデルのアクセス有効化（`ap-northeast-1` で有効化。既定は vision 対応の `global.anthropic.claude-sonnet-4-6`）
 - **Tavily API キー**（Web 検索を使う場合）。[tavily.com](https://tavily.com) で取得し、デプロイ時に `TAVILY_API_KEY` として渡します（無料枠あり）
-- Slack アプリの準備（Socket Mode・トークン取得・スコープ付与など）→ 詳細は [docs/slack-setup.md](docs/slack-setup.md) を参照
+- Slack アプリの準備（Events API・スコープ付与・SSM SecureString 登録など）→ 詳細は下記「Slack コンシューマーのデプロイ」を参照
 
 ## セットアップ
 
@@ -114,35 +116,54 @@ pnpm --filter @app/infra run deploy
 
 完了後、出力の `AgentRuntimeArn` を控えておきます（`.env` の `AGENT_RUNTIME_ARN` に設定）。コードを変更したら、再度このコマンドを実行するだけで新しいイメージがビルド・反映されます。
 
-## ローカル起動（Slack コンシューマー）
+## Slack コンシューマーのデプロイ
 
-Slack アプリの作成・トークン取得・スコープ設定は [docs/slack-setup.md](docs/slack-setup.md) を参照してください。以下はトークン取得済みを前提とした起動手順です。
+Slack コンシューマーは **Events API + Function URL** で動作するサーバーレス構成です。受信 Lambda が Slack の署名検証と即時 ACK を行い、応答 Lambda がエージェントを呼び出して結果を投稿します。ローカル常駐プロセスは不要で、アクセスキーも不要（Lambda 実行ロールの一時クレデンシャルを使用）です。
 
-### 1. 環境変数を設定
+### 1. Slack アプリの作成とスコープ付与
 
-```bash
-cp apps/consumer-slack/.env.example apps/consumer-slack/.env
-```
+1. [api.slack.com/apps](https://api.slack.com/apps) → **Create an App** → **From scratch** でアプリを作成
+2. **OAuth & Permissions** → **Bot Token Scopes** に以下を追加:
+   - `app_mentions:read`（チャンネルでのメンション受信）
+   - `im:history`（DM の受信）
+   - `chat:write`（返信の投稿）
+   - `files:read`（添付ファイルのダウンロード）
+   - `files:write`（生成物ファイルのアップロード）
+3. **Install to Workspace** でインストールし、**Bot User OAuth Token**（`xoxb-` で始まる）を控える
 
-`.env` を編集して以下の値を設定します:
+### 2. SSM SecureString の手動作成（デプロイ前）
 
-```
-SLACK_BOT_TOKEN=xoxb-...
-SLACK_APP_TOKEN=xapp-...
-AWS_REGION=ap-northeast-1
-AGENT_RUNTIME_ARN=arn:aws:bedrock-agentcore:...（デプロイ出力値）
-AWS_PROFILE=your-aws-profile  # SSO 利用時は事前に aws sso login が必要
-```
-
-### 2. 起動
+CDK は SecureString パラメータを作成できないため、デプロイ前に手動で登録します。
 
 ```bash
-pnpm --filter @app/consumer-slack dev
+aws ssm put-parameter --region ap-northeast-1 --type SecureString \
+  --name /agentcore-slack/slack-bot/signing-secret --value '<Signing Secret>'
+aws ssm put-parameter --region ap-northeast-1 --type SecureString \
+  --name /agentcore-slack/slack-bot/bot-token --value 'xoxb-...'
 ```
 
-### 3. Slack でボットを招待してメンション
+> Signing Secret は Slack アプリの **Basic Information → App Credentials → Signing Secret** で確認できます。
 
-ボットをチャンネルに招待し、`@bot ...` でメンションします。ファイル添付（画像・PDF・CSV など）も可能です。
+### 3. デプロイ
+
+```bash
+pnpm --filter @app/infra run deploy
+```
+
+デプロイ完了後、出力の `SlackEventsUrl` を控えます。
+
+### 4. Event Subscriptions の設定
+
+1. Slack アプリの **Event Subscriptions** → **Enable Events** を **On**
+2. **Request URL** にデプロイ出力の `SlackEventsUrl` を入力し、Verified になることを確認
+3. **Subscribe to bot events** に以下を追加して保存:
+   - `app_mention`（チャンネルでのメンション）
+   - `message.im`（DM）
+4. 保存後に再インストールを求められたら従う
+
+### 5. Slack でボットを招待してメンション
+
+ボットをチャンネルに招待し、`@bot ...` でメンションします。DM も直接送信できます。ファイル添付（画像・PDF・CSV など）も可能です。
 
 ## エージェントの環境変数
 
@@ -163,7 +184,8 @@ Runtime の挙動は以下の環境変数で制御します（CDK の `environme
 ## 動作確認（手動 E2E）
 
 1. `@bot こんにちは` → テキスト応答（ツール未使用）
-2. `@bot 最新の TypeScript のリリース状況を調べて` → `web_search` で検索し、回答＋引用 URL を返す
-3. 画像を添付して `@bot この画像に何が写っている？` → 画像を直接読み取って回答（サンドボックス未使用）
-4. CSV を添付して `@bot このデータを棒グラフにして output に保存して` → `loadAttachments` で取り込み、Code Interpreter で処理。説明テキスト＋生成画像がスレッドに添付（画像は `output/<name>` 経由で返却）
-5. ~~同一スレッドで継続メンション → 文脈が保持される~~ **（未実装）** 現状は毎回単発プロンプトとして処理され、スレッド内の過去の会話は参照されません。AgentCore Memory を利用した文脈維持は今後対応予定です
+2. bot への DM で `こんにちは` → DM スレッドに応答（`message.im` 購読）
+3. `@bot 最新の TypeScript のリリース状況を調べて` → `web_search` で検索し、回答＋引用 URL を返す
+4. 画像を添付して `@bot この画像に何が写っている？` → 画像を直接読み取って回答（サンドボックス未使用）
+5. CSV を添付して `@bot このデータを棒グラフにして output に保存して` → `loadAttachments` で取り込み、Code Interpreter で処理。説明テキスト＋生成画像がスレッドに添付（画像は `output/<name>` 経由で返却）
+6. ~~同一スレッドで継続メンション → 文脈が保持される~~ **（未実装）** 現状は毎回単発プロンプトとして処理され、スレッド内の過去の会話は参照されません。AgentCore Memory を利用した文脈維持は今後対応予定です

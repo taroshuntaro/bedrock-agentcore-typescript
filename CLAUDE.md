@@ -3,12 +3,12 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 - プロジェクト全体像・前提条件: [README.md](README.md)
-- Slack アプリのセットアップ手順: [docs/slack-setup.md](docs/slack-setup.md)
+- Slack アプリのセットアップ手順: [docs/slack-setup.md](docs/slack-setup.md)（※ 現在 Socket Mode 前提のため Events API 版への更新が必要）
 - 設計/計画ドキュメント: [docs/superpowers/specs](docs/superpowers/specs) / [docs/superpowers/plans](docs/superpowers/plans)
 
 ## プロジェクト概要
 
-pnpm モノレポ構成の PoC。Slack（ローカル Socket Mode）から AWS Bedrock AgentCore 上の
+pnpm モノレポ構成の PoC。Slack（Events API + サーバーレス Lambda）から AWS Bedrock AgentCore 上の
 Vercel AI SDK エージェントを呼び出し、Code Interpreter でファイル入出力ができる汎用エージェント。
 リージョンは **`ap-northeast-1` 固定**。モデルの既定は `global.anthropic.claude-sonnet-4-6`。
 
@@ -33,10 +33,10 @@ CDK デプロイ:
 pnpm --filter @app/infra run deploy    # ビルド〜ECR push〜Runtime 作成まで一括（deploy は pnpm 組み込みコマンドと衝突するため run が必須）
 ```
 
-Slack コンシューマーのローカル起動:
+Slack サーバーレスコンシューマーのデプロイ（受信/応答 Lambda + Function URL）:
 
 ```bash
-pnpm --filter @app/consumer-slack dev
+pnpm --filter @app/infra run deploy   # AgentcoreSlackAgent と AgentcoreSlackBot を作成
 ```
 
 ## コード構成とアーキテクチャ
@@ -47,21 +47,24 @@ pnpm --filter @app/consumer-slack dev
 | --- | --- | --- |
 | `packages/contract` | `@app/contract` | コンシューマー⇔エージェント間の共通契約。Zod スキーマ(AgentRequest/AgentResponse)・`invokeAgent` クライアント・`deriveSessionId` |
 | `apps/agent` | `@app/agent` | AgentCore Runtime 上のエージェント。Vercel AI SDK の ToolLoopAgent + CodeInterpreterTools + Web 検索ツール(Tavily) を `BedrockAgentCoreApp` で HTTP 化。画像/PDF はマルチモーダル(vision)入力として直接処理する |
-| `apps/consumer-slack` | `@app/consumer-slack` | Slack Bolt (Socket Mode) アダプター。Slack イベント → `@app/contract` 経由でエージェント呼び出し → 応答を mrkdwn 変換して投稿 |
+| `apps/consumer-slack` | `@app/consumer-slack` | Slack Events API（Function URL）を受ける受信/応答 2段 Lambda。受信 Lambda が Slack 署名検証＋即時 ACK、応答 Lambda が `@app/contract` 経由でエージェント呼び出し → mrkdwn 変換して投稿 |
 | `infra` | `@app/infra` | AWS CDK スタック。リポジトリルートの Dockerfile を `linux/arm64` でビルドし ECR push → AgentCore Runtime を作成 |
 
 ### データフロー
 
 ```
-Slack (app_mention)
-  → consumer-slack: downloadSlackFiles → buildAgentRequest (mapping.ts)
-  → contract: invokeAgent → BedrockAgentCoreClient → InvokeAgentRuntime
-  → agent (AgentCore Runtime 上):
-      buildMessages(画像/PDF を vision パート化 + 全ファイル一覧) → ToolLoopAgent.generate
-        （tools: Code Interpreter + web_search + loadAttachments）
-      → コードでの処理が必要なときだけ loadAttachments で input/ に取り込み
-      → サンドボックスを使った場合のみ collectOutputArtifacts で output/ を回収
-  → consumer-slack: toSlackMrkdwn(text) + files.uploadV2(artifacts)
+Slack (app_mention / DM)
+  → 受信 Lambda (Function URL, authType NONE):
+      verifySlackSignature → x-slack-retry-num を ignore → 応答 Lambda を非同期 Invoke（InvocationType=Event）で起動 → 200 ACK
+  → 応答 Lambda:
+      decideEvent → downloadSlackFiles → buildAgentRequest (mapping.ts)
+      → contract: invokeAgent → BedrockAgentCoreClient → InvokeAgentRuntime
+      → agent (AgentCore Runtime 上):
+          buildMessages(画像/PDF を vision パート化 + 全ファイル一覧) → ToolLoopAgent.generate
+            （tools: Code Interpreter + web_search + loadAttachments）
+          → コードでの処理が必要なときだけ loadAttachments で input/ に取り込み
+          → サンドボックスを使った場合のみ collectOutputArtifacts で output/ を回収
+      → toSlackMrkdwn(text) + files.uploadV2(artifacts)
   → Slack スレッドに応答
 ```
 
@@ -108,3 +111,5 @@ Conventional Commits + 日本語説明。スコープにはパッケージ名を
 - **マルチモーダル入力は vision 対応モデル前提** — `AGENT_MODEL_ID` が vision 対応 Claude であることを前提とする（既定の `global.anthropic.claude-sonnet-4-6` は対応）。非対応モデルに切り替える場合は `PDF_VISION_ENABLED=false` 等で画像/PDF を listingOnly（一覧表示のみ）に倒す必要がある。
 - **`TAVILY_API_KEY` を必ずデプロイ前に設定する** — `pnpm --filter @app/infra run deploy` の前に環境変数として設定すること。未設定だと Web 検索が実行時に静かに失敗する（例外ではなく LLM にエラー文字列として返る）。
 - **画像/PDF のサンドボックス取り込みは lazy** — 添付の画像/PDF は vision パートとして LLM に直接渡し、Code Interpreter サンドボックスへの書き込みは LLM が `loadAttachments` ツールを呼んだときだけ行う。
+- **SSM SecureString は CDK で作成できない** — `/agentcore-slack/slack-bot/signing-secret` と `/agentcore-slack/slack-bot/bot-token` はデプロイ前に `aws ssm put-parameter --type SecureString` で手動作成する。CDK は参照と読み取り権限付与のみ。
+- **Slack コンシューマーはアクセスキー不要** — Lambda 実行ロールの一時クレデンシャルで AgentCore を呼ぶ。受信は署名検証で認可し、再送（x-slack-retry-num）は一律 ignore する。

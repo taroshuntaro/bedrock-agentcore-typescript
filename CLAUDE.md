@@ -93,10 +93,43 @@ Slack (app_mention / DM)
 
 ### コミット規約
 
-Conventional Commits + 日本語説明。スコープにはパッケージ名を使う。
+Conventional Commits + 日本語説明。必ず prefix を付け、スコープには原則としてパッケージ名や対象領域を使う。
 
-- `feat(agent):` / `fix(consumer-slack):` / `docs(design):` / `chore:`
+形式:
+
+```text
+<prefix>(<scope>): <日本語の要約>
+
+<必要に応じて本文>
+```
+
+prefix の使い分け:
+
+- `feat`: ユーザー向けの機能追加・振る舞い追加
+- `fix`: バグ修正・誤った振る舞いの修正
+- `docs`: ドキュメントのみの変更
+- `test`: テスト追加・修正
+- `refactor`: 外部仕様を変えない内部改善
+- `perf`: パフォーマンス改善
+- `build`: ビルド、依存関係、Docker、CDK などの変更
+- `ci`: CI/CD 設定の変更
+- `chore`: その他の保守作業
+
+コメント作成ルール:
+
+- 件名は 50 文字程度を目安に、命令形ではなく「何をしたか」が分かる日本語で簡潔に書く。
+- 本文が必要な場合は空行を挟み、「なぜ変更したか」「何を変えたか」「影響範囲・注意点」を簡潔に書く。
 - 1 コミット 1 関心事。無関係な変更を混ぜない。
+- スコープ例: `agent` / `consumer-slack` / `contract` / `infra` / `docs` / `repo`
+
+例:
+
+```text
+feat(agent): 添付ファイルの遅延読み込みを追加
+
+画像/PDF は vision 入力を優先し、コード処理が必要な場合のみ
+Code Interpreter のサンドボックスへ取り込むようにした。
+```
 
 ## 重要な制約・落とし穴
 

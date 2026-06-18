@@ -105,16 +105,32 @@ export TAVILY_API_KEY=tvly-...
 ```
 
 > 未設定のままデプロイすると、Web 検索は**実行時に静かに失敗**します（例外ではなく「検索に失敗しました: …」という文字列がモデルに返り、応答は継続します）。Web 検索を使わない場合は未設定でも他の機能は動作します。
+>
+> `AgentcoreSlackAgent` を再デプロイするときも `TAVILY_API_KEY` は毎回渡してください。未設定で再デプロイすると Runtime の環境変数が空文字で上書きされ、既に動いていた Web 検索も使えなくなります。
 
 ### 4. デプロイ（ビルド〜push〜Runtime 作成まで一括）
 
 ```bash
-pnpm --filter @app/infra run deploy
+pnpm --filter @app/infra run deploy --all --require-approval never
 ```
 
-> `deploy` は pnpm の組み込みコマンドと名前が衝突するため、`run` を省略すると `ERR_PNPM_INVALID_DEPLOY_TARGET` になります。
+> `deploy` は pnpm の組み込みコマンドと名前が衝突するため、`run` を省略すると `ERR_PNPM_INVALID_DEPLOY_TARGET` になります。CDK アプリに複数スタックがあるため、両方まとめてデプロイする場合は `--all` も明示してください。
 
 完了後、出力の `AgentRuntimeArn` を控えておきます（`.env` の `AGENT_RUNTIME_ARN` に設定）。コードを変更したら、再度このコマンドを実行するだけで新しいイメージがビルド・反映されます。
+
+### 5. 片方のスタックだけデプロイする場合
+
+CDK アプリには `AgentcoreSlackAgent`（AgentCore Runtime）と `AgentcoreSlackBot`（Slack 受信/応答 Lambda）の 2 スタックがあります。片方だけを反映したい場合は、対象スタック名を指定します。
+
+```bash
+# Slack Lambda / Function URL だけ更新する（AgentCore Runtime は触らない）
+pnpm --filter @app/infra run deploy AgentcoreSlackBot --exclusively --require-approval never
+
+# AgentCore Runtime だけ更新する（Web 検索を使うなら TAVILY_API_KEY を必ず渡す）
+TAVILY_API_KEY=tvly-... pnpm --filter @app/infra run deploy AgentcoreSlackAgent --exclusively --require-approval never
+```
+
+`--exclusively` を付けない場合、CDK が依存スタックも更新対象に含めることがあります。例えば SlackBot だけを直したいのに AgentCore Runtime も更新され、`TAVILY_API_KEY` 未設定のシェルから実行すると Web 検索キーが空で上書きされるため注意してください。
 
 ## Slack コンシューマーのデプロイ
 
@@ -147,10 +163,12 @@ aws ssm put-parameter --region ap-northeast-1 --type SecureString \
 ### 3. デプロイ
 
 ```bash
-pnpm --filter @app/infra run deploy
+pnpm --filter @app/infra run deploy AgentcoreSlackBot --exclusively --require-approval never
 ```
 
 デプロイ完了後、出力の `SlackEventsUrl` を控えます。
+
+> 初回構築や AgentCore Runtime も同時に更新したい場合は `pnpm --filter @app/infra run deploy --all --require-approval never` を使います。その場合、Web 検索を使うなら `TAVILY_API_KEY` を設定したシェルで実行してください。
 
 ### 4. Event Subscriptions の設定
 
@@ -160,6 +178,8 @@ pnpm --filter @app/infra run deploy
    - `app_mention`（チャンネルでのメンション）
    - `message.im`（DM）
 4. 保存後に再インストールを求められたら従う
+
+> 再デプロイしても Function URL が変わらない更新であれば、Slack 側の Request URL は変更不要です。スタックを作り直して URL が変わった場合だけ Slack 側も更新してください。
 
 ### 5. Slack でボットを招待してメンション
 

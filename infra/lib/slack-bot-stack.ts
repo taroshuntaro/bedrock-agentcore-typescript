@@ -33,8 +33,7 @@ export class SlackBotStack extends Stack {
     // SSM SecureString パラメータの ARN(読み取り権限のスコープに使う)。
     const paramArn = (name: string) => `arn:aws:ssm:${this.region}:${this.account}:parameter${name}`
 
-    // NodejsFunction 共通のバンドル設定。ESM 出力・minify・node24 ターゲット。
-    const commonBundling = { minify: true, target: 'node24', format: OutputFormat.ESM }
+    const commonBundling = slackLambdaBundling
     const depsLockFilePath = path.join(repoRoot, 'pnpm-lock.yaml')
 
     // --- 応答 Lambda(ファイル DL → invokeAgent → Slack 投稿) ---
@@ -107,3 +106,6 @@ export class SlackBotStack extends Stack {
     new CfnOutput(this, 'SlackEventsUrl', { value: fnUrl.url })
   }
 }
+
+// NodejsFunction 共通のバンドル設定。Slack SDK の CommonJS 依存を Lambda で動かすため CJS 出力にする。
+export const slackLambdaBundling = { minify: true, target: 'node24', format: OutputFormat.CJS }
